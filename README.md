@@ -1,10 +1,8 @@
-# 각자의 폴더(backend, frontend)에서 실행
-
 # git
-''' 최초 1회 연동 '''
+''' 최초 1회 연동 (내 컴퓨터의 c에 GONYADI가 존재하는 경우)'''
 ```bash
-   git clone https://github.com/park-gyuri/GONYADI.git 
-   cd GONYADI 
+cd c/GONYADI 
+git clone https://github.com/park-gyuri/GONYADI.git .
 
 
 ''' 작업 전 '''
