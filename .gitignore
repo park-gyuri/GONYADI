@@ -3,25 +3,29 @@
 Thumbs.db
 
 
+
 # --- Backend (FastAPI / Python) ---
 # 가상환경 폴더 (용량이 크고 각자 생성해야 함)
-venv/
-.venv/
-env/
+backend/venv/
+backend/.venv/
+backend/env/
 # 파이썬 실행 시 생기는 임시 파일
-__pycache__/
-*.py[cod]
+backend/__pycache__/
+backend/*.py[cod]
+
 
 
 # --- Frontend (React Native / Node.js) ---
 # 라이브러리 설치 폴더 (용량이 매우 크며 npm install로 생성 가능)
-node_modules/
+frontend/node_modules/
 # 빌드 결과물 및 임시 파일
-.expo/
-android/build/
-ios/build/
+frontend/.expo/
+frontend/android/build/
+frontend/ios/build/
 
 # --- 보안 (공통) ---
 # 비밀번호, API 키 등이 담긴 파일 (특히 주의하기!)
 .env
 .env.local
+
+
