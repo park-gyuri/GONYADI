@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    container_name: GONYADI  # 컨테이너 이름
+    environment:
+      POSTGRES_USER: ${DB_USER}    # DB 접속 아이디
+      POSTGRES_PASSWORD: ${DB_PASSWORD}   # DB 접속 비밀번호
+      POSTGRES_DB: ${DB_NAME}   # 생성할 데이터베이스 이름
+    ports:
+      - "5432:5432"               # 내 컴퓨터 포트 : 컨테이너 포트
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data # 데이터 저장소 (도커를 꺼도 데이터 유지)
