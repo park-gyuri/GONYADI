@@ -27,16 +27,4 @@ class User(SQLModel, table=True):
     usr_point: int = Field(default=0)
     usr_created: datetime = Field(default_factory=datetime.now)
 
-# 5. 실제 DB에 테이블을 만드는 함수
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-
-if __name__ == "__main__":
-    print("🚀 1단계: 프로그램 시작")
-    print(f"🔗 접속 시도 주소: {DATABASE_URL}") # 주소가 의도대로 나오는지 확인
-    
-    try:
-        create_db_and_tables()
-        print("✅ 2단계: DB 테이블 생성 완료!")
-    except Exception as e:
-        print(f"❌ 에러 발생: {e}")
+# 5. 실제 DB에 테이블 생성은 alembic으로 대체
