@@ -7,7 +7,7 @@ git clone https://github.com/park-gyuri/GONYADI.git .
 
 ''' 작업 전 '''
 git checkout main
-git pull origin main # 최신 코드 가져오기
+git pull origin main # 최신 main 코드 가져오기
 
 
 ''' 코드 작성 (branch에서 작업) '''
