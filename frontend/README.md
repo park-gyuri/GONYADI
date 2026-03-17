@@ -1,5 +1,9 @@
 ## 📂 프로젝트 구조
 - `frontend/gonyadi-app/`: React Native (Expo go 또는 Android Studio Emulator로 실행)
+- `frontend/gonyadi-app/scr/screens`: UI 화면과 기능
+- `frontend/gonyadi-app/scr/components`: 재사용 가능한 컴포넌트 (모달 팝업, 아이콘 등)
+- `frontend/gonyadi-app/app/(tabs)`: 화면간 이동 네비게이션 역할 (Expo router시스템)
+
 
 ---
 
@@ -53,3 +57,4 @@ git push origin 작업자성/기능
    * **실물 스마트폰:** 앱 스토어(또는 플레이스토어)에서 **Expo Go** 앱을 다운로드해 주세요.
    * **PC 에뮬레이터 (선택):** iOS Simulator(Mac 전용) 또는 Android Studio Emulator가 필요합니다.
 # 우리는 안드로이드 개발이기에 Android Studio Emulator를 사용
+# 이와 관련된 비슷한 내용은 Frontend/gonyadi-app/README.md에 자동 생성되어 있으니 참고 (but 영어임)
