@@ -13,6 +13,7 @@ git pull origin main # 최신 main 코드 가져오기
 ''' 코드 작성 (branch에서 작업) '''
 git checkout -b 작업자성/기능 (이미 생성한 브랜치로 이동할 때는 -b 빼기)
 # ex Hong/user-profile
+git merge main # 코드가 최신 main보다 뒤쳐졌을 때 main 코드를 가져와서 합치기
 
 
 ''' 작업 후 저장 '''
@@ -25,6 +26,7 @@ git commit -m "아래 규칙에 따라 커밋 메시지 작성"
 # Docs: 문서를 수정했을 때 사용 (ex Docs: 설치 방법 및 실행 가이드 업데이트)
 # Style: 코드의 의미는 변하지 않고, **포맷팅(들여쓰기, 세미콜론 누락 등)**만 고쳤을 때 사용 (ex Style: 전체적인 코드 들여쓰기 정렬)
 # Refactor: 기능을 추가하거나 버그를 잡은 건 아니지만, 코드를 더 깨끗하게 정리했을 때 사용 (ex Refactor: 중복되는 API 호출 함수 하나로 통합)
+# Merge : 코드 변화는 없지만, 병합을 위해 커밋할 때 사용
 
 
 ''' 깃 허브에 올리기 '''
