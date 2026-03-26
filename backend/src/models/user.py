@@ -3,8 +3,8 @@ from typing import Optional
 from datetime import datetime
 
 
-class User(SQLModel, table=True):
-    user: Optional[int] = Field(default=None, primary_key=True)
+class Users(SQLModel, table=True):
+    user_pk: Optional[int] = Field(default=None, primary_key=True)
     user_id: str = Field(unique=True, index=True)
     user_password: str
     user_nickname: str

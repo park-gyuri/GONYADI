@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
-from sqlmodel import create_engine
+from sqlmodel import create_engine, Session
+
 
 
 # 1. .env 파일의 설정값 불러오기
@@ -17,6 +18,6 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@localhost:5432/{DB_NAME}"
 engine = create_engine(DATABASE_URL, echo=True)
 
 # API에서 쓸 DB 세션 생성
-def get_db():
+def get_session():
     with Session(engine) as session:
         yield session

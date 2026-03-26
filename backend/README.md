@@ -9,7 +9,7 @@ pip install -r requirements.txt # 의존성 설치
 
 .env 파일 생성 #.env.example 파일 내용 붙여넣은 후 키 값 넣기
 
-uvicorn main:app --reload # 서버 실행
+uvicorn src.main:app --reload # 서버 실행
 
 
 
