@@ -1,160 +1,203 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-// 이 줄을 새로 추가해 주세요!
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import SearchIcon from '../components/icons/searchIcon';
 
-// 파일명 및 컴포넌트 이름은 확실하게 MainScreen으로 통일!
+const searchHistory = ['경주', '대구', '광주', '군산', '서울', '원주', '횡성', '울산', '여수'];
+
+const recommendedDestinations = [
+  { id: 1, city: '경주', country: '대한민국', image: 'https://picsum.photos/seed/gyeongju/300/200' },
+  { id: 2, city: '부산', country: '대한민국', image: 'https://picsum.photos/seed/busan/300/200' },
+  { id: 3, city: '대전', country: '대한민국', image: 'https://picsum.photos/seed/daejeon/300/200' },
+  { id: 4, city: '대구', country: '대한민국', image: 'https://picsum.photos/seed/daegu/300/200' },
+  { id: 5, city: '울산', country: '대한민국', image: 'https://picsum.photos/seed/ulsan/300/200' },
+  { id: 6, city: '여수', country: '대한민국', image: 'https://picsum.photos/seed/yeosu/300/200' },
+];
+
 const MainScreen = () => {
-    const router = useRouter(); // 🌟 이거 추가!
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const navigateToRecommend = (keyword = searchQuery) => {
+    if (keyword.trim() !== '') {
+      router.push({ pathname: '/recommend', params: { destination: keyword } });
+    } else {
+      router.push('/recommend');
+    }
+  };
+
   return (
-    // SafeAreaView: 노치나 상태바 영역을 침범하지 않게 해주는 최상위 컨테이너
     <SafeAreaView style={styles.container}>
-      
-      {/* 1. 상단 헤더 영역 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>MYROUTE</Text>
       </View>
 
-      {/* 2. 메인 콘텐츠 영역 (스크롤 가능하게 ScrollView 사용) */}
       <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        
-        {/* [섹션 A] 여행 경로 추천 받기 */}
-        {/* 디자인을 보면 연한 파란색 배경 박스 안에 제목과 회색 박스가 들어있습니다. */}
-        <View style={styles.sectionBox}>
-          <TouchableOpacity style={styles.sectionHeader} onPress={() => router.push('/recommend')}>
-            <Text style={styles.sectionTitle}>여행 경로 추천 받기</Text>
-            <Text style={styles.arrowIcon}>→</Text> 
-          </TouchableOpacity>
-          
-          {/* 큰 회색 아이콘 박스 (나중에 실제 아이콘 이미지로 교체할 부분) */}
-          <TouchableOpacity style={styles.largeHeroBox}>
-            {/* 여기에 꼬불꼬불한 경로 아이콘이 들어갑니다 */}
-          </TouchableOpacity>
+
+        {/* [섹션 A] 여행 경로 추천 받기 검색 박스 */}
+        <View style={styles.searchSection}>
+          <Text style={styles.searchSectionTitle}>원하는 여행지를 입력하고 경로 추천받기</Text>
+
+          <View style={styles.searchInputWrapper}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="여행지를 검색하세요"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={() => navigateToRecommend()}
+            />
+            <TouchableOpacity onPress={() => navigateToRecommend()} style={styles.searchIconBtn}>
+              <SearchIcon width={20} height={20} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.searchHistoryTitle}>검색 내역</Text>
+          <View style={styles.searchHistoryWrapper}>
+            {searchHistory.map((city, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.historyBadge}
+                onPress={() => navigateToRecommend(city)}
+              >
+                <Text style={styles.historyBadgeText}>{city}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        {/* [섹션 B] 추천 여행지 */}
-        <View style={styles.sectionBox}>
+        {/* [섹션 B] 추천 여행지 (2열 세로 스크롤) */}
+        <View style={styles.recommendSection}>
           <Text style={styles.sectionTitle}>추천 여행지</Text>
-          
-          {/* 가로로 스크롤되는 여행지 리스트 (horizontal 속성 추가) */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            
-            {/* 추천 여행지 카드 1 (경주) */}
-            <View style={styles.destinationCard}>
-              {/* 🌟 수정된 부분: 파란 배경 안에 들어가는 흰색 둥근 박스 */}
-              <View style={styles.destinationInnerWhiteBox}>
-                {/* 나중에 여기에 회색 도형(아이콘)들이 들어갈 자리 */}
-              </View>
-              <View style={styles.destinationTextContainer}>
-                <Text style={styles.countryText}>대한민국</Text>
-                <Text style={styles.cityText}>경주</Text>
-              </View>
-            </View>
 
-            {/* 추천 여행지 카드 1 (경주) */}
-            <View style={styles.destinationCard}>
-              {/* 🌟 수정된 부분: 파란 배경 안에 들어가는 흰색 둥근 박스 */}
-              <View style={styles.destinationInnerWhiteBox}>
-                {/* 나중에 여기에 회색 도형(아이콘)들이 들어갈 자리 */}
-              </View>
-              <View style={styles.destinationTextContainer}>
-                <Text style={styles.countryText}>대한민국</Text>
-                <Text style={styles.cityText}>경주</Text>
-              </View>
-            </View>
-
-            {/* 추천 여행지 카드 1 (경주) */}
-            <View style={styles.destinationCard}>
-              {/* 🌟 수정된 부분: 파란 배경 안에 들어가는 흰색 둥근 박스 */}
-              <View style={styles.destinationInnerWhiteBox}>
-                {/* 나중에 여기에 회색 도형(아이콘)들이 들어갈 자리 */}
-              </View>
-              <View style={styles.destinationTextContainer}>
-                <Text style={styles.countryText}>대한민국</Text>
-                <Text style={styles.cityText}>경주</Text>
-              </View>
-            </View>
-
-          </ScrollView>
+          <View style={styles.gridContainer}>
+            {recommendedDestinations.map(dest => (
+              <TouchableOpacity key={dest.id} style={styles.gridCard} activeOpacity={0.9}>
+                <Image source={{ uri: dest.image }} style={styles.cardImage} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.countryText}>{dest.country}</Text>
+                  <Text style={styles.cityText}>{dest.city}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </ScrollView>
 
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// 피그마 디자인을 반영하는 스타일시트
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // 전체 배경 흰색
+    backgroundColor: '#FFFFFF',
   },
-  // --- 헤더 스타일 ---
   header: {
     height: 60,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0', // 헤더 아래 얇은 회색 선
+    borderBottomColor: '#E0E0E0',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    letterSpacing: 2, // 자간 넓히기
+    letterSpacing: 2,
   },
-  // --- 메인 콘텐츠 스타일 ---
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 16, // 양옆 여백
+    paddingHorizontal: 16,
     paddingTop: 20,
   },
-  sectionBox: {
-    backgroundColor: '#EAF5FF', // 연한 파란색 배경 (피그마 코드 확인 필요)
+  searchSection: {
+    backgroundColor: '#C9ECE6', // 피그마 스크린샷 연한 청록색 느낌
     borderRadius: 20,
-    padding: 20,
+    padding: 24,
     marginBottom: 25,
   },
-  sectionHeader: {
+  searchSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CDE5DE',
+    height: 48,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  searchIconBtn: {
+    padding: 4,
+  },
+  searchHistoryTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 12,
+  },
+  searchHistoryWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  historyBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.4)', // 반투명한 배경으로 튀지 않게
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C6DFD6',
+  },
+  historyBadgeText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '400',
+  },
+  recommendSection: {
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    marginRight: 8,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#111',
   },
-  arrowIcon: {
-    fontSize: 20,
-    color: '#333',
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  largeHeroBox: {
-    backgroundColor: '#BDCDDB', // 진한 회색-파랑 박스 (피그마 코드 확인 필요)
-    height: 200,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+  gridCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
   },
-  // --- 가로 스크롤 카드 스타일 ---
-  horizontalScroll: {
-    marginTop: 12,
-  },
-  destinationCard: {
-    width: 132,                 // 🌟 안에 흰 박스가 여유롭게 들어가도록 너비를 살짝 키움
-    backgroundColor: '#BDCDDB', // 진한 파랑-회색 바탕 (피그마 색상으로 변경 가능)
-    borderRadius: 16,
-    marginRight: 12,
-    padding: 10,                // 🌟 핵심 1: 카드 전체에 10px 안쪽 여백을 줘서 파란 테두리가 생기게 함
-  },
-  destinationInnerWhiteBox: {
+  cardImage: {
+    width: '100%',
     height: 120,
-    backgroundColor: '#FFFFFF', // 🌟 핵심 2: 안쪽에 들어가는 진짜 흰색 박스
-    borderRadius: 12,           // 흰 박스 자체에도 둥근 모서리 적용
+    backgroundColor: '#CCC',
   },
-  destinationTextContainer: {
-    paddingTop: 10,             // 흰 박스와 글씨 사이의 간격
-    paddingHorizontal: 4,       // 글씨 좌우 여백
+  cardTextContainer: {
+    padding: 12,
   },
   countryText: {
     fontSize: 14,
