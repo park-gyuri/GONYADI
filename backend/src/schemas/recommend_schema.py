@@ -78,7 +78,7 @@ class RecommendRequest(BaseModel):
         if (self.nights is None) != (self.days is None):
             raise ValueError("박과 일은 함께 입력해야 합니다.")
 
-        if has_dates and self.end_date < self.start_date:
+        if has_dates and self.end_date < self.start_date: # type: ignore
             raise ValueError("종료일은 시작일 이후여야 합니다.")
         
         '''

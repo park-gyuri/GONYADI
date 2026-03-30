@@ -1,4 +1,4 @@
-import ast
+import asyncio
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from src.core.database import get_session
@@ -7,6 +7,7 @@ from src.models.user import Users
 from src.schemas.recommend_schema import RecommendRequest, RecommendResponse
 from src.services.prompt_builder import build_hybrid_prompt
 from src.services.gemini import get_gemini_places
+import src.crud.place_crud as place_crud
 
 
 
@@ -19,10 +20,13 @@ async def handle_recommendation(
 	session: Session = Depends(get_session)
 ): 
     prompt = build_hybrid_prompt(req)
-    places = get_gemini_places(prompt)
+    places_from_ai = await asyncio.to_thread(get_gemini_places, prompt) # ai에게 장소 얻기
+    db_places = place_crud.get_or_create_places_bulk(places_from_ai, session) # db 매칭
+	
+
     return RecommendResponse (
 	    status = "completed", 
 	    prompt_preview = prompt,
-        places = places
+        places = places_from_ai
 	    )
     
