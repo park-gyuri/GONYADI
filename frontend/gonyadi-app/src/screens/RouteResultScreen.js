@@ -1,21 +1,30 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, ToastAndroid, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
+
+// 🌟 우리가 만든 '폴더 생성 모달' 부품 불러오기!
+import FolderCreateModal from '../components/FolderCreateModal';
+import WastebasketIcon from '../components/icons/wastebasketIcon';
+import MarkerIcon from '../components/icons/markerIcon';
+import SendIcon from '../components/icons/sendIcon';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const RouteResultScreen = () => {
   const router = useRouter();
-  
+
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isSaveModalVisible, setSaveModalVisible] = useState(false);
+  const [isSaveModalVisible, setSaveModalVisible] = useState(false); // 기존 경로 저장 팝업 스위치
+
+  // 🌟 새 폴더 만들기 팝업 스위치 추가! (기본값: 꺼짐)
+  const [isFolderCreateVisible, setFolderCreateVisible] = useState(false);
 
   const animatedHeight = useRef(new Animated.Value(SCREEN_HEIGHT * 0.45)).current;
 
   const toggleSheet = () => {
     const toValue = isExpanded ? SCREEN_HEIGHT * 0.45 : SCREEN_HEIGHT * 0.8;
-    
+
     Animated.timing(animatedHeight, {
       toValue: toValue,
       duration: 300,
@@ -25,16 +34,30 @@ const RouteResultScreen = () => {
     setIsExpanded(!isExpanded);
   };
 
-  const dummyPlaces = [
+  const [places, setPlaces] = useState([
     { id: 1, name: '장소A', address: '경상북도 영주시 어쩌구', transport: '도보 20분 이동' },
     { id: 2, name: '장소B', address: '경상북도 영주시 어쩌구', transport: '버스 20분 이동' },
     { id: 3, name: '장소C', address: '경상북도 영주시 어쩌구', transport: '도보 10분 이동' },
     { id: 4, name: '장소D', address: '경상북도 영주시 어쩌구', transport: null },
-  ];
+  ]);
+
+  const handleDeletePlace = (id) => {
+    if (places.length <= 1) {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('최소 1개의 장소는 남겨두어야 합니다.', ToastAndroid.SHORT);
+      } else {
+        // iOS 등 다른 플랫폼에서는 모달/알림창 대신 타이머 기반의 커스텀 Toast를 쓸 수도 있지만, 기본은 Alert 사용
+        Alert.alert('', '최소 1개의 장소는 남겨두어야 합니다.');
+      }
+      return;
+    }
+
+    setPlaces(prevPlaces => prevPlaces.filter(place => place.id !== id));
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      
+
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
@@ -50,26 +73,30 @@ const RouteResultScreen = () => {
       </View>
 
       <Animated.View style={[styles.bottomSheet, { height: animatedHeight }]}>
-        
+
         <TouchableOpacity style={styles.handleWrapper} activeOpacity={0.6} onPress={toggleSheet}>
           <View style={styles.dragHandle} />
         </TouchableOpacity>
 
         <ScrollView style={styles.routeList} showsVerticalScrollIndicator={false}>
-          {dummyPlaces.map((place) => (
+          {places.map((place, index) => (
             <View key={place.id}>
-              
+
               <View style={styles.placeCard}>
                 <View style={styles.placeInfo}>
-                  <Text style={styles.placeName}>📍 {place.name}</Text>
+                  <View style={styles.placeNameRow}>
+                    <MarkerIcon width={20} height={20} />
+                    <Text style={styles.placeNameText}>{place.name}</Text>
+                  </View>
                   <Text style={styles.placeAddress}>{place.address}</Text>
                 </View>
-                <TouchableOpacity style={styles.deleteBtn}>
-                  <Text style={styles.deleteIcon}>🗑️</Text>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}>
+                  <WastebasketIcon width={24} height={24} />
                 </TouchableOpacity>
               </View>
 
-              {place.transport ? (
+              {/* 다음 장소로 가는 이동 수단 연결선 (마지막 장소면 표시하지 않음) */}
+              {place.transport && index < places.length - 1 ? (
                 <View style={styles.transportInfo}>
                   <View style={styles.verticalLine} />
                   <Text style={styles.transportText}>{place.transport}</Text>
@@ -85,8 +112,8 @@ const RouteResultScreen = () => {
           <Text style={styles.inputLabel}>수정사항을 입력하세요</Text>
           <View style={styles.llmInputWrapper}>
             <TextInput style={styles.llmInput} placeholder="예: 장소B는 빼고 맛집 하나 추가해줘" />
-            <TouchableOpacity>
-              <Text style={styles.sendIcon}>➤</Text>
+            <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <SendIcon width={24} height={24} />
             </TouchableOpacity>
           </View>
         </View>
@@ -95,7 +122,7 @@ const RouteResultScreen = () => {
           <TouchableOpacity style={styles.actionBtn}>
             <Text style={styles.actionBtnText}>공유하기</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.actionBtn} onPress={() => setSaveModalVisible(true)}>
             <Text style={styles.actionBtnText}>저장하기</Text>
           </TouchableOpacity>
@@ -103,7 +130,7 @@ const RouteResultScreen = () => {
 
       </Animated.View>
 
-      {/* 🌟 저장하기 팝업창(모달) */}
+      {/* 🌟 1단계: 기존 경로 저장하기 팝업창(모달) */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -112,7 +139,7 @@ const RouteResultScreen = () => {
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSaveModalVisible(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.saveModalBox}>
-            
+
             <View style={styles.saveModalHeader}>
               <TouchableOpacity onPress={() => setSaveModalVisible(false)} style={styles.modalBackBtn}>
                 <Text style={styles.modalBackIcon}>←</Text>
@@ -129,9 +156,15 @@ const RouteResultScreen = () => {
               <TouchableOpacity style={styles.folderTag}>
                 <Text style={styles.folderTagText}>국내</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.folderTagPlus}>
+
+              {/* 🌟 2단계: 대망의 + 버튼! 누르면 폴더 생성 스위치 ON! */}
+              <TouchableOpacity
+                style={styles.folderTagPlus}
+                onPress={() => setFolderCreateVisible(true)}
+              >
                 <Text style={styles.folderTagPlusText}>+</Text>
               </TouchableOpacity>
+
             </View>
 
             <Text style={styles.saveSectionTitle}>제목을 입력하세요</Text>
@@ -147,12 +180,18 @@ const RouteResultScreen = () => {
         </TouchableOpacity>
       </Modal>
 
+      {/* 🌟 3단계: 새 폴더 만들기 팝업창 (스위치가 켜지면 제일 위에 겹쳐서 뜹니다) */}
+      <FolderCreateModal
+        visible={isFolderCreateVisible}
+        onClose={() => setFolderCreateVisible(false)}
+      />
+
     </SafeAreaView>
   );
 };
 
 // ==================================================
-// 🎨 스타일시트
+// 🎨 스타일시트 (유저님 코드 그대로 유지)
 // ==================================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
@@ -168,20 +207,19 @@ const styles = StyleSheet.create({
   routeList: { flex: 1, marginTop: 0 },
   placeCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F9FA', borderRadius: 12, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   placeInfo: { flex: 1 },
-  placeName: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 4 },
-  placeAddress: { fontSize: 13, color: '#666', marginLeft: 22 },
+  placeNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  placeNameText: { fontSize: 16, fontWeight: 'bold', color: '#111', marginLeft: 6 },
+  placeAddress: { fontSize: 13, color: '#666', marginLeft: 26 },
   deleteBtn: { padding: 8 },
-  deleteIcon: { fontSize: 18 },
   transportInfo: { flexDirection: 'row', alignItems: 'center', marginLeft: 24, marginVertical: 8 },
   verticalLine: { width: 2, height: 30, backgroundColor: '#D1D5DB', marginRight: 12 },
   transportText: { fontSize: 13, color: '#3A7BD5', fontWeight: 'bold' },
   inputSection: { marginTop: 10, marginBottom: 16 },
   inputLabel: { fontSize: 14, fontWeight: 'bold', color: '#111', marginBottom: 8 },
-  llmInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F6FA', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  llmInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FCFFE8', borderWidth: 1, borderColor: '#DCE5B6', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   llmInput: { flex: 1, fontSize: 14, color: '#333' },
-  sendIcon: { fontSize: 20, color: '#4A5B6D', marginLeft: 10 },
   actionButtonsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionBtn: { flex: 0.48, backgroundColor: '#A9B6C2', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  actionBtn: { flex: 0.48, backgroundColor: '#A9E2D9', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   actionBtnText: { fontSize: 16, fontWeight: 'bold', color: '#111' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
@@ -196,9 +234,17 @@ const styles = StyleSheet.create({
   folderTagText: { fontSize: 14, color: '#333' },
   folderTagPlus: { borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 8, width: 36, alignItems: 'center', justifyContent: 'center' },
   folderTagPlusText: { fontSize: 16, color: '#555' },
-  saveTitleInput: { backgroundColor: '#F0F6FA', borderRadius: 8, height: 48, paddingHorizontal: 12, marginBottom: 24 },
+  saveTitleInput: { 
+    backgroundColor: '#FCFFE8', 
+    borderRadius: 8, 
+    height: 48, 
+    paddingHorizontal: 16, 
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#DCE5B6'
+  },
   saveConfirmBtnRow: { alignItems: 'flex-end' },
-  saveConfirmBtn: { backgroundColor: '#A9B6C2', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24 },
+  saveConfirmBtn: { backgroundColor: '#A9E2D9', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24 },
   saveConfirmBtnText: { fontSize: 16, fontWeight: 'bold', color: '#111' },
 });
 
