@@ -11,8 +11,8 @@ backend/.venv/
 # 백엔드 환경 변수 파일
 backend/.env
 # 파이썬 실행 시 생기는 임시 파일
-backend/__pycache__/
-backend/*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 # 데이터베이스 파일
 backend/postgres_data/
 
