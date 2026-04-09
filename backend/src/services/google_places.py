@@ -26,9 +26,11 @@ def enrich_place_from_google(name: str, lat: float, lng: float) -> Optional[dict
         "X-Goog-FieldMask": (
             "places.id,"
             "places.formattedAddress," 
-            "places.rating," # 별점
-            "places.currentOpeningHours" # 영업시간
+            
         ),
+        # 원래 위 괄호 안에 있어야 하는데 구글 맵스 비용 문제로 잠시 빼둠
+        #"places.rating," # 별점
+        #"places.currentOpeningHours" # 영업시간
     }
     body = {
         "textQuery": name,
