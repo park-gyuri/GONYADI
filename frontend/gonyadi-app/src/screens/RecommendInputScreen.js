@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Alert } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import PinIcon from '../components/icons/pinIcon';
@@ -16,6 +17,7 @@ const RecommendInputScreen = () => {
 
   // 0. 여행지 상태 관리
   const [destination, setDestination] = useState(initialDestination || '');
+  const [isDestinationError, setIsDestinationError] = useState(false);
 
   React.useEffect(() => {
     if (initialDestination) {
@@ -25,6 +27,159 @@ const RecommendInputScreen = () => {
 
   // 1. 카테고리 바텀 시트 스위치
   const [isModalVisible, setModalVisible] = useState(false);
+
+  // 1-1. 날짜(캘린더) 상태 관리 (기간 선택)
+  const [isCalendarVisible, setCalendarVisible] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().split('T')[0].substring(0, 7)); // 'YYYY-MM'
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // 1-2. 박/일 상태 관리
+  const [nights, setNights] = useState('');
+  const [days, setDays] = useState('');
+  const [isDurationError, setIsDurationError] = useState(false); // 미입력 시 테두리 색상용 상태
+
+  // 제출 버튼 클릭 시 유효성 검사 로직
+  const handleSubmit = () => {
+    let hasError = false;
+
+    // 여행지 검사
+    if (!destination.trim()) {
+      setIsDestinationError(true);
+      hasError = true;
+    } else {
+      setIsDestinationError(false);
+    }
+
+    // 여행 기간 검사
+    if (!nights || !days) {
+      setIsDurationError(true);
+      hasError = true;
+    } else {
+      setIsDurationError(false);
+    }
+
+    // 상세 카테고리 태그 개수 검사
+    if (selectedTags.length === 0) {
+      setIsTagError(true);
+      hasError = true;
+    } else {
+      setIsTagError(false);
+    }
+
+    if (hasError) return; // 에러가 하나라도 있으면 함수 종료
+
+    // 유효성 통과 시 다음 화면 이동!
+    router.push('/route-result');
+  };
+
+  // 캘린더 날짜 클릭 시 로직
+  const handleDayPress = (day) => {
+    const dateStr = day.dateString;
+
+    // 두 날짜가 모두 선택되어 있거나, 아무것도 없을 땐 시작일로 초기화 
+    if (!startDate || (startDate && endDate)) {
+      setStartDate(dateStr);
+      setEndDate('');
+      setNights('');
+      setDays('');
+    }
+    // 시작일이 있는데 종료일이 없을 때
+    else if (!endDate) {
+      const sDate = new Date(startDate);
+      const eDate = new Date(dateStr);
+
+      if (eDate < sDate) {
+        // 종료일이 시작일보다 빠르면 시작일로 덮어쓰기
+        setStartDate(dateStr);
+      } else {
+        // 종료일 세팅 및 박/일 계산
+        setEndDate(dateStr);
+        const diffTime = Math.abs(eDate - sDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // 박 수
+        setNights(diffDays.toString());
+        setDays((diffDays + 1).toString());
+
+        setIsDurationError(false); // 달력으로 기간이 채워지면 에러 즉시 해제
+      }
+    }
+  };
+
+  // 선택 완료 버튼 클릭 로직 (한 날짜만 마킹하고 완료 누르면 당일치기 처리)
+  const handleConfirmCalendar = () => {
+    if (startDate && !endDate) {
+      setEndDate(startDate);
+      setNights('0');
+      setDays('1');
+      setIsDurationError(false);
+    }
+    setCalendarVisible(false);
+  };
+
+  // 선택된 날짜 사이에 색칠하는 객체 생성기
+  const getMarkedDates = () => {
+    let marked = {};
+
+    // 날짜 포맷 헬퍼 (한국 시간대 시차 오류 방지)
+    const getLocalDateString = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    // 1. '현재 뷰의 달'에 해당하는 주말(토, 일) 날짜들만 회색으로 커스텀
+    // (전후 달의 날짜들은 캘린더 기본 제공 '흐린 텍스트'가 적용되도록 제외)
+    const baseDate = new Date(currentMonth + '-01');
+    const startOfM = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+    const endOfM = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+    let iter = new Date(startOfM);
+    while (iter <= endOfM) {
+      if (iter.getDay() === 0 || iter.getDay() === 6) { // 일요일=0, 토요일=6
+        // UTC 변환 오류 방지를 위해 로컬 날짜 직접 반환
+        const dateString = getLocalDateString(iter);
+        marked[dateString] = { textColor: '#9CA3AF' };
+      }
+      iter.setDate(iter.getDate() + 1);
+    }
+
+    // 2. 사용자가 선택한 출발/도착일 마킹 (주말 색상 위에 덮어씌움)
+    if (startDate) {
+      marked[startDate] = {
+        ...marked[startDate],
+        startingDay: true,
+        endingDay: !endDate || startDate === endDate, // 도착일이 없거나 같으면 온전한 원(동그라미)으로 그림
+        color: '#43B0AB',
+        textColor: 'white'
+      };
+    }
+    if (endDate && endDate !== startDate) {
+      marked[endDate] = {
+        ...marked[endDate],
+        endingDay: true,
+        color: '#43B0AB',
+        textColor: 'white'
+      };
+    }
+    if (startDate && endDate) {
+      let current = new Date(startDate);
+      current.setDate(current.getDate() + 1);
+      const end = new Date(endDate);
+      while (current < end) {
+        const dateString = getLocalDateString(current);
+        marked[dateString] = { color: '#C9ECE6', textColor: 'black' };
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    return marked;
+  };
+
+  // 화면에 보여질 텍스트 포맷
+  const displayDateRange = startDate && endDate
+    ? `${startDate} ~ ${endDate}`
+    : startDate
+      ? `${startDate} ~ (날짜 선택)`
+      : "";
 
   // 2. 인원수 상태 관리
   const [personCount, setPersonCount] = useState(1);
@@ -54,6 +209,7 @@ const RecommendInputScreen = () => {
 
   // 4. 상세 요청 태그 상태 관리
   const [selectedTags, setSelectedTags] = useState(['힐링', '도보']);
+  const [isTagError, setIsTagError] = useState(false);
 
   // 태그 삭제 함수 (X 버튼)
   const handleRemoveTag = (tagToRemove) => {
@@ -64,6 +220,7 @@ const RecommendInputScreen = () => {
   const handleAddTag = (newTag) => {
     if (!selectedTags.includes(newTag)) {
       setSelectedTags([...selectedTags, newTag]);
+      setIsTagError(false); // 새로운 태그가 추가되면 에러 강제 해제
     }
     setModalVisible(false);
   };
@@ -92,27 +249,39 @@ const RecommendInputScreen = () => {
               <PinIcon width={16} height={16} />
               <Text style={styles.labelWithIcon}>여행지</Text>
             </View>
-            <View style={styles.inputWrapper}>
+            <View style={[styles.inputWrapper, isDestinationError && styles.errorBorder]}>
               <TextInput
                 style={styles.textInput}
                 placeholder="어디로 떠나시나요?"
                 value={destination}
-                onChangeText={setDestination}
+                onChangeText={(text) => {
+                  setDestination(text);
+                  setIsDestinationError(false); // 아무 자판이나 치면 즉시 알림 해제
+                }}
               />
             </View>
+            {/* 하단 경고 문구 표시 */}
+            {isDestinationError && (
+              <Text style={styles.errorText}>* 여행지를 입력해주세요.</Text>
+            )}
           </View>
 
           <View style={styles.inputSection}>
             <View style={styles.labelRow}>
               <CalenderIcon width={18} height={18} />
-              <Text style={styles.labelWithIcon}>여행 일정(선택)</Text>
+              <Text style={styles.labelWithIcon}>여행 일정 (선택)</Text>
             </View>
             <View style={styles.inputWrapper}>
-              <TextInput style={styles.textInput} placeholder="2026-01-12 ~ 2026-01-15" editable={false} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="버튼을 눌러 출발/도착 날짜를 선택하세요  →"
+                value={displayDateRange}
+                editable={false}
+              />
               <View style={styles.verticalDivider} />
-              <View style={styles.iconPlaceholder}>
+              <TouchableOpacity style={styles.iconPlaceholder} onPress={() => setCalendarVisible(true)}>
                 <CalenderIcon width={20} height={20} />
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -122,11 +291,32 @@ const RecommendInputScreen = () => {
               <Text style={styles.labelWithIcon}>여행 기간</Text>
             </View>
             <View style={styles.rowWrapper}>
-              <TextInput style={[styles.textInput, styles.shortInput]} keyboardType="numeric" />
+              <TextInput
+                style={[styles.textInput, styles.shortInput, isDurationError && styles.errorBorder]}
+                keyboardType="numeric"
+                value={nights}
+                onChangeText={(text) => {
+                  setNights(text);
+                  setIsDurationError(false); // 어떤 숫자든 치면 즉시 알림 해제
+                }}
+              />
               <Text style={styles.unitText}>박</Text>
-              <TextInput style={[styles.textInput, styles.shortInput]} keyboardType="numeric" />
+              <TextInput
+                style={[styles.textInput, styles.shortInput, isDurationError && styles.errorBorder]}
+                keyboardType="numeric"
+                value={days}
+                onChangeText={(text) => {
+                  setDays(text);
+                  setIsDurationError(false); // 어떤 숫자든 치면 즉시 알림 해제
+                }}
+              />
               <Text style={styles.unitText}>일</Text>
             </View>
+
+            {/* 하단 경고 문구 표시 */}
+            {isDurationError && (
+              <Text style={styles.errorText}>* 여행 기간을 입력해주세요.</Text>
+            )}
           </View>
 
           <View style={[styles.rowSection, { zIndex: 1000 }]}>
@@ -153,7 +343,7 @@ const RecommendInputScreen = () => {
             <View style={[styles.halfSection, { zIndex: 1000 }]}>
               <View style={styles.labelRow}>
                 <MoneyIcon width={18} height={18} />
-                <Text style={styles.labelWithIcon}>1인 예산(선택)</Text>
+                <Text style={styles.labelWithIcon}>1인 예산 (선택)</Text>
               </View>
               <TouchableOpacity style={styles.inputWrapper} activeOpacity={0.8} onPress={() => setDropdownOpen(!isDropdownOpen)}>
                 <Text style={[styles.textInput, { color: selectedBudget ? '#333' : '#999' }]} numberOfLines={1} adjustsFontSizeToFit={true}>
@@ -182,7 +372,7 @@ const RecommendInputScreen = () => {
               <ListIcon width={18} height={18} />
               <Text style={styles.labelWithIcon}>상세 요청</Text>
             </View>
-            <View style={styles.textAreaWrapper}>
+            <View style={[styles.textAreaWrapper, isTagError && styles.errorBorder]}>
               <View style={styles.tagRow}>
 
                 {selectedTags.map((tag, index) => (
@@ -198,11 +388,16 @@ const RecommendInputScreen = () => {
                   <Text style={styles.tagPlusText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TextInput style={styles.textArea} multiline placeholder="예시) 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어." />
+              <TextInput style={styles.textArea} multiline placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어." />
             </View>
+
+            {/* 하단 경고 문구 표시: 태그 개수 검증 에러 */}
+            {isTagError && (
+              <Text style={styles.errorText}>* 카테고리를 1개 이상 골라주세요.</Text>
+            )}
           </View>
 
-          <TouchableOpacity style={styles.submitButton} onPress={() => router.push('/route-result')}>
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
             <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
             <Text style={styles.submitButtonText}>경로 추천받기</Text>
           </TouchableOpacity>
@@ -253,6 +448,31 @@ const RecommendInputScreen = () => {
         </TouchableOpacity>
       </Modal>
 
+      {/* ================================================== */}
+      {/* 2. [달력 모달 (기간 선택용)] */}
+      {/* ================================================== */}
+      <Modal animationType="fade" transparent={true} visible={isCalendarVisible} onRequestClose={() => setCalendarVisible(false)}>
+        <TouchableOpacity style={styles.calendarModalOverlay} activeOpacity={1} onPress={() => setCalendarVisible(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.calendarModalContent}>
+            <Calendar
+              markingType={'period'}
+              markedDates={getMarkedDates()}
+              onDayPress={handleDayPress}
+              onMonthChange={(month) => setCurrentMonth(month.dateString.substring(0, 7))}
+              monthFormat={'yyyy년 MM월'}
+              theme={{
+                selectedDayBackgroundColor: '#43B0AB',
+                todayTextColor: '#43B0AB',
+                arrowColor: '#43B0AB',
+              }}
+            />
+            <TouchableOpacity style={styles.calendarConfirmBtn} onPress={handleConfirmCalendar}>
+              <Text style={styles.calendarConfirmText}>선택 완료</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 };
@@ -278,6 +498,23 @@ const styles = StyleSheet.create({
   verticalDivider: { width: 1, height: 20, backgroundColor: '#E0E0E0', marginHorizontal: 6 },
   rowWrapper: { flexDirection: 'row', alignItems: 'center' },
   shortInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, width: 60, height: 44, textAlign: 'center' },
+  errorBorder: {
+    borderColor: '#FF5252',
+    borderWidth: 1.5,
+    backgroundColor: '#FFEBEE',
+    shadowColor: '#FF5252',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 5,
+    elevation: 4
+  },
+  errorText: {
+    color: '#FF5252',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginLeft: 4,
+  },
   unitText: { marginHorizontal: 8, fontSize: 14, fontWeight: 'bold' },
   rowSection: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   halfSection: { flex: 0.48 },
@@ -310,7 +547,12 @@ const styles = StyleSheet.create({
 
   dropdownList: { position: 'absolute', top: 75, left: 0, right: 0, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 10, zIndex: 1000 },
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  dropdownItemText: { fontSize: 13, color: '#333' }
+  dropdownItemText: { fontSize: 13, color: '#333' },
+
+  calendarModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
+  calendarModalContent: { backgroundColor: '#FFF', borderRadius: 16, width: '90%', padding: 20 },
+  calendarConfirmBtn: { backgroundColor: '#AEE4D7', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 16 },
+  calendarConfirmText: { fontSize: 14, fontWeight: 'bold', color: '#111' }
 });
 
 export default RecommendInputScreen;
