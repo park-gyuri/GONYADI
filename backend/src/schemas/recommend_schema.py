@@ -2,7 +2,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 from enum import StrEnum
 from datetime import date
-from typing import Optional
+from typing import Optional, Dict
 
 
 # ── 카테고리 정의 ─────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ class RecommendRequest(BaseModel):
         if (self.nights is None) != (self.days is None):
             raise ValueError("박과 일은 함께 입력해야 합니다.")
 
-        if has_dates and self.end_date < self.start_date:
+        if has_dates and self.end_date < self.start_date: # type: ignore
             raise ValueError("종료일은 시작일 이후여야 합니다.")
         
         '''
@@ -107,13 +107,31 @@ class PlaceResult(BaseModel):
     category:    str    # 장소 카테고리
 
 
+# ── Google Routes API 경로 정보 스키마 ────────────────────────────────────
+
+class RouteDetail(BaseModel):
+    """단일 이동 수단의 경로 세부 정보"""
+    travel_mode:      str                   # "walk" | "drive"
+    duration_seconds: int                   # 소요 시간 (초)
+    duration_minutes: float                 # 소요 시간 (분)
+    distance_meters:  int                   # 이동 거리 (미터)
+    polyline:         list[list[float]] = []  # [[lat, lng], ...] 폴리라인 좌표 (TMAP 반환값)
+
+
+class RouteSegment(BaseModel):
+    """인접한 두 장소 사이의 이동 수단별 경로 묶음"""
+    from_name: str                              # 출발 장소명
+    to_name:   str                              # 도착 장소명
+    routes:    Dict[str, Optional[RouteDetail]] # 키: 이동수단(walk/drive/...), 값: RouteDetail 또는 None
+
 
 # ── 프론트 응답 스키마 ───────────────────────────────────────────────────
 
 class RecommendResponse(BaseModel):
-    status:         str  # "analyzing" - 현재 상태
-    prompt_preview: str  # 실제로 AI에 넘길 프롬프트 (디버그용)
-    places:         list[PlaceResult]  # Gemini가 추천한 장소를 리스트로 받음
+    status:         str                 # "completed" - 현재 상태
+    prompt_preview: str                 # 실제로 AI에 넘길 프롬프트 (디버그용)
+    places:         list[PlaceResult]   # Gemini가 추천한 장소 리스트
+    route_segments: list[RouteSegment]  # 장소 간 이동 경로 (Google Routes API)
     # message:        str  # 프론트 로딩 화면(화면 B)에 보여줄 문구
 
 

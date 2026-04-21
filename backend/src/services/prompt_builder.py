@@ -5,27 +5,27 @@ from src.schemas.recommend_schema import (
     ConditionCategories,
 )
 THEME_EXPLANATION = {
-    ThemeCategories.HEALING:  "스파, 온천, 자연 속 힐링 공간, 조용한 카페",
-    ThemeCategories.FOOD:     "현지인 맛집, 로컬 식당, 유명 음식점",
-    ThemeCategories.PHOTO:    "포토존, 인생샷 명소, 뷰 맛집",
-    ThemeCategories.EXHIBIT:  "미술관, 갤러리, 팝업 전시",
-    ThemeCategories.ACTIVITY: "공방, 이색 체험, 요리 클래스",
-    ThemeCategories.CAFE:     "분위기 좋은 카페, 디저트 카페, 루프탑 카페",
-    ThemeCategories.LEISURE:  "놀이공원, 스포츠, 액티비티",
-    ThemeCategories.HISTORY:  "역사 유적지, 고궁, 향토 박물관",
-    ThemeCategories.CULTURE:  "공연, 전통문화, 지역 축제",
+    ThemeCategories.HEALING:  "스파·온천·힐링 카페",
+    ThemeCategories.FOOD:     "현지 맛집·로컬 식당",
+    ThemeCategories.PHOTO:    "포토존·인생샷 명소",
+    ThemeCategories.EXHIBIT:  "미술관·갤러리·전시",
+    ThemeCategories.ACTIVITY: "공방·이색 체험",
+    ThemeCategories.CAFE:     "분위기 카페·루프탑",
+    ThemeCategories.LEISURE:  "놀이공원·스포츠·액티비티",
+    ThemeCategories.HISTORY:  "유적지·고궁·박물관",
+    ThemeCategories.CULTURE:  "공연·전통문화·축제",
 }
 
 TRANSPORT_EXPLANATION = {
-    TransportCategories.WALK:    "도보 이동 가능한 반경 내 장소 위주, 동선 최소화",
-    TransportCategories.CAR:     "주차 가능 여부 고려, 거리 제한 없이 광역 추천",
-    TransportCategories.BIKE:    "자전거도로 접근 가능한 장소 우선",
-    TransportCategories.TRANSIT: "지하철·버스 역세권 장소 우선",
+    TransportCategories.WALK:    "도보권 위주",
+    TransportCategories.CAR:     "주차 가능·광역",
+    TransportCategories.BIKE:    "자전거도로 우선",
+    TransportCategories.TRANSIT: "역세권 우선",
 }
 
 CONDITION_EXPLANATION = {
     ConditionCategories.WHEELCHAIR: "휠체어 접근 가능한 장소만 추천 (턱 없음, 엘리베이터 필수)",
-    ConditionCategories.PET:        "반려동물 입장 가능한 장소만 추천 (펫 프렌들리)",
+    ConditionCategories.PET:        "반려동물 입장 가능한 장소만 추천",
 }
 
 
