@@ -13,7 +13,7 @@ const SavedRouteDetailScreen = () => {
 
   const toggleSheet = () => {
     const toValue = isExpanded ? SCREEN_HEIGHT * 0.45 : SCREEN_HEIGHT * 0.8;
-    
+
     Animated.timing(animatedHeight, {
       toValue: toValue,
       duration: 300,
@@ -32,7 +32,7 @@ const SavedRouteDetailScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      
+
       {/* 🌟 주석과 빈칸을 싹 지운 초깔끔 헤더! 에러 날 틈이 없습니다. */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -46,7 +46,7 @@ const SavedRouteDetailScreen = () => {
       </View>
 
       <Animated.View style={[styles.bottomSheet, { height: animatedHeight }]}>
-        
+
         <TouchableOpacity style={styles.handleWrapper} activeOpacity={0.6} onPress={toggleSheet}>
           <View style={styles.dragHandle} />
         </TouchableOpacity>
@@ -54,7 +54,7 @@ const SavedRouteDetailScreen = () => {
         <ScrollView style={styles.routeList} showsVerticalScrollIndicator={false}>
           {dummyPlaces.map((place) => (
             <View key={place.id}>
-              
+
               <View style={styles.placeCard}>
                 <View style={styles.placeInfo}>
                   <Text style={styles.placeName}>📍 {place.name}</Text>
