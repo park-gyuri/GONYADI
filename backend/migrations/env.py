@@ -1,16 +1,15 @@
 import sys
 import os
+sys.path.append(os.getcwd())
 from dotenv import load_dotenv
-from models import User
-
+from src.models.user import Users
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
-from sqlmodel import SQLModel 
+from sqlmodel import SQLModel
 
 # 환경 설정 로드
-sys.path.append(os.getcwd())
 load_dotenv()
 
 # alembic.ini의 설정값(설계 기본 지침서)들을 읽어오기

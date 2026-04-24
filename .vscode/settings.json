@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "c:/GONYADI/backend/venv/Scripts/python.exe",
+  "python.analysis.extraPaths": [
+    "c:/GONYADI/backend"
+  ],
+  "python.analysis.venvPath": "c:/GONYADI/backend/venv"
+}
