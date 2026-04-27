@@ -1,9 +1,15 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, ToastAndroid, Alert } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, ToastAndroid, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 
-// 🌟 우리가 만든 '폴더 생성 모달' 부품 불러오기!
+// 지도 및 Context
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import { useRoutes } from '../context/RouteContext';
+import { requestNewRoute } from '../api/routeApi';
+import { fetchFolders, createFolder, saveItinerary } from '../api/saveApi';
+
+// 우리가 만든 '폴더 생성 모달' 부품 불러오기!
 import FolderCreateModal from '../components/FolderCreateModal';
 import WastebasketIcon from '../components/icons/wastebasketIcon';
 import MarkerIcon from '../components/icons/markerIcon';
@@ -20,6 +26,12 @@ const RouteResultScreen = () => {
   // 🌟 새 폴더 만들기 팝업 스위치 추가! (기본값: 꺼짐)
   const [isFolderCreateVisible, setFolderCreateVisible] = useState(false);
 
+  // 저장하기 관련 상태
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
   const animatedHeight = useRef(new Animated.Value(SCREEN_HEIGHT * 0.45)).current;
 
   const toggleSheet = () => {
@@ -34,12 +46,99 @@ const RouteResultScreen = () => {
     setIsExpanded(!isExpanded);
   };
 
-  const [places, setPlaces] = useState([
-    { id: 1, name: '장소A', address: '경상북도 영주시 어쩌구', transport: '도보 20분 이동' },
-    { id: 2, name: '장소B', address: '경상북도 영주시 어쩌구', transport: '버스 20분 이동' },
-    { id: 3, name: '장소C', address: '경상북도 영주시 어쩌구', transport: '도보 10분 이동' },
-    { id: 4, name: '장소D', address: '경상북도 영주시 어쩌구', transport: null },
-  ]);
+  // 🌟 전역 Context에서 추천받은 데이터 가져오기
+  const { currentRecommendation, setCurrentRecommendation, currentFormData } = useRoutes();
+
+  // 실제 데이터를 상태로 관리 (삭제 기능 유지를 위해)
+  const [places, setPlaces] = useState([]);
+  const [segments, setSegments] = useState([]);
+  const mapRef = useRef(null);
+
+  // 재추천 피드백 상태 관리
+  const [updateMessage, setUpdateMessage] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    if (currentRecommendation) {
+      setPlaces(currentRecommendation.places || []);
+      setSegments(currentRecommendation.route_segments || []);
+    }
+  }, [currentRecommendation]);
+
+  // 장소 데이터가 바뀌면 지도를 해당 위치로 부드럽게 이동시킴
+  useEffect(() => {
+    if (mapRef.current && places.length > 0) {
+      mapRef.current.animateToRegion({
+        latitude: places[0].lat,
+        longitude: places[0].lng,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }, 1000);
+    }
+  }, [places]);
+
+  // 저장 모달이 열릴 때 폴더 목록 불러오기
+  useEffect(() => {
+    if (isSaveModalVisible) {
+      loadFolders();
+      if (currentFormData && currentFormData.region && !saveTitle) {
+        setSaveTitle(`${currentFormData.region} 여행 일정`);
+      }
+    }
+  }, [isSaveModalVisible]);
+
+  const loadFolders = async () => {
+    try {
+      const data = await fetchFolders();
+      setFolders(data);
+      if (data.length > 0) {
+        setSelectedFolderId(data[0].folder_pk);
+      }
+    } catch (error) {
+      Alert.alert('오류', '폴더 목록을 불러오지 못했습니다.');
+    }
+  };
+
+  const handleCreateFolder = async (folderName) => {
+    try {
+      const newFolder = await createFolder(folderName);
+      setFolders([newFolder, ...folders]);
+      setSelectedFolderId(newFolder.folder_pk);
+    } catch (error) {
+      Alert.alert('오류', '폴더 생성에 실패했습니다.');
+    }
+  };
+
+  const handleSaveItinerary = async () => {
+    if (!saveTitle.trim()) {
+      Alert.alert('알림', '제목을 입력해주세요.');
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const itineraryData = {
+        folder_id: selectedFolderId,
+        title: saveTitle,
+        region: currentFormData?.region || '기타',
+        start_date: currentFormData?.startDate || null,
+        end_date: currentFormData?.endDate || null,
+        nights: currentFormData?.nights ? parseInt(currentFormData.nights) : null,
+        days: currentFormData?.days ? parseInt(currentFormData.days) : null,
+        number_of_people: currentFormData?.personCount || null,
+        budget_per_person: currentFormData?.budget_per_person || null,
+        recommendation_data: currentRecommendation
+      };
+      
+      await saveItinerary(itineraryData);
+      Alert.alert('성공', '여행 경로가 성공적으로 저장되었습니다!');
+      setSaveModalVisible(false);
+    } catch (error) {
+      Alert.alert('오류', '경로 저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleDeletePlace = (id) => {
     if (places.length <= 1) {
@@ -52,7 +151,75 @@ const RouteResultScreen = () => {
       return;
     }
 
-    setPlaces(prevPlaces => prevPlaces.filter(place => place.id !== id));
+    setPlaces(prevPlaces => prevPlaces.filter(place => place.name !== id)); // name을 임시 id처럼 사용
+  };
+
+  // 가장 적절한(빠른) 이동 수단 찾기 로직
+  const getBestRouteMode = (segment) => {
+    if (!segment || !segment.routes) return null;
+    
+    // 유효한 폴리라인이 있는 수단들만 필터링
+    const validModes = Object.keys(segment.routes).filter(mode => 
+      segment.routes[mode] && 
+      segment.routes[mode].polyline && 
+      segment.routes[mode].polyline.length > 0
+    );
+
+    if (validModes.length === 0) return null;
+
+    // 소요 시간(분) 기준으로 오름차순 정렬 (가장 빠른 수단이 우선)
+    validModes.sort((a, b) => segment.routes[a].duration_minutes - segment.routes[b].duration_minutes);
+
+    // 특별 우선순위: 도보가 30분 이내라면 자동차/대중교통보다 도보를 우선 (풍경 감상 등)
+    const walkMode = validModes.find(m => m === 'walk');
+    if (walkMode && segment.routes[walkMode].duration_minutes <= 30) {
+      return walkMode;
+    }
+
+    return validModes[0];
+  };
+
+  // 🌟 재추천 API 호출 함수
+  const handleUpdateRoute = async () => {
+    if (!updateMessage.trim()) return;
+    if (!currentFormData) {
+      Alert.alert('오류', '이전 입력 정보가 없어 재추천을 진행할 수 없습니다.');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      // 1. 기존 formData에 사용자 피드백(userMessage)과 기존 장소(original_places) 덮어쓰기
+      const newFormData = {
+        ...currentFormData,
+        userMessage: updateMessage,
+        original_places: places, // 현재 목록(삭제 등 반영)을 전송
+      };
+
+      // 2. API 요청
+      const result = await requestNewRoute(newFormData);
+
+      // 3. 전역 상태 및 로컬 상태 업데이트
+      setCurrentRecommendation(result);
+      setUpdateMessage(''); // 입력창 초기화
+      Alert.alert('완료', '일정이 수정되었습니다.');
+
+    } catch (error) {
+      Alert.alert('경로 수정 실패', error.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // 폴리라인 색상 맵
+  const getPolylineColor = (mode) => {
+    switch(mode) {
+      case 'walk': return '#4CAF50';   // 녹색
+      case 'drive': return '#2196F3';  // 파란색
+      case 'bicycle': return '#FF9800';// 주황색
+      case 'transit': return '#9C27B0';// 보라색
+      default: return '#333333';
+    }
   };
 
   return (
@@ -69,7 +236,56 @@ const RouteResultScreen = () => {
       </View>
 
       <View style={styles.mapArea}>
-        <Text style={styles.mapText}>🗺️ 지도 API가 들어올 자리</Text>
+        {Platform.OS === 'web' ? (
+          <Text style={styles.mapText}>🗺️ 웹에서는 지도를 지원하지 않습니다.{'\n'}모바일(안드로이드/iOS)에서 확인해주세요.</Text>
+        ) : (
+          places.length > 0 ? (
+            <MapView 
+              ref={mapRef}
+              style={{ width: '100%', height: '100%' }}
+              initialRegion={{
+                latitude: places[0].lat,
+                longitude: places[0].lng,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+            >
+              {/* 장소 마커 표시 */}
+              {places.map((place, idx) => (
+                <Marker 
+                  key={`marker-${idx}`}
+                  coordinate={{ latitude: place.lat, longitude: place.lng }}
+                  title={`${idx + 1}. ${place.name}`}
+                  description={place.reason}
+                />
+              ))}
+
+              {/* 경로 폴리라인 표시 */}
+              {segments.map((seg, idx) => {
+                const routeMode = getBestRouteMode(seg);
+                if (!routeMode) return null;
+
+                const routeData = seg.routes[routeMode];
+                // TMAP 좌표는 [[lat, lng], ...] 형태로 변환되어 있다고 가정
+                const coordinates = routeData.polyline.map(coord => ({
+                  latitude: coord[0],
+                  longitude: coord[1],
+                }));
+
+                return (
+                  <Polyline 
+                    key={`poly-${idx}`}
+                    coordinates={coordinates}
+                    strokeColor={getPolylineColor(routeMode)}
+                    strokeWidth={4}
+                  />
+                );
+              })}
+            </MapView>
+          ) : (
+            <Text style={styles.mapText}>경로 데이터가 없습니다.</Text>
+          )
+        )}
       </View>
 
       <Animated.View style={[styles.bottomSheet, { height: animatedHeight }]}>
@@ -79,8 +295,26 @@ const RouteResultScreen = () => {
         </TouchableOpacity>
 
         <ScrollView style={styles.routeList} showsVerticalScrollIndicator={false}>
-          {places.map((place, index) => (
-            <View key={place.id}>
+          {places.map((place, index) => {
+            // 해당 장소에서 다음 장소로 가는 세그먼트
+            const segment = segments[index];
+            let transportText = null;
+
+            if (segment && index < places.length - 1) {
+              const bestMode = getBestRouteMode(segment);
+              
+              if (bestMode) {
+                const bestRoute = segment.routes[bestMode];
+                let modeKo = bestRoute.travel_mode === 'walk' ? '도보' : 
+                             bestRoute.travel_mode === 'drive' ? '자동차' : 
+                             bestRoute.travel_mode === 'transit' ? '대중교통' : '자전거';
+                
+                transportText = `${modeKo} ${Math.round(bestRoute.duration_minutes)}분 이동`;
+              }
+            }
+
+            return (
+            <View key={place.name}>
 
               <View style={styles.placeCard}>
                 <View style={styles.placeInfo}>
@@ -88,33 +322,43 @@ const RouteResultScreen = () => {
                     <MarkerIcon width={20} height={20} />
                     <Text style={styles.placeNameText}>{place.name}</Text>
                   </View>
-                  <Text style={styles.placeAddress}>{place.address}</Text>
+                  <Text style={styles.placeAddress}>{place.category} · {place.reason}</Text>
                 </View>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.name)}>
                   <WastebasketIcon width={24} height={24} />
                 </TouchableOpacity>
               </View>
 
-              {/* 다음 장소로 가는 이동 수단 연결선 (마지막 장소면 표시하지 않음) */}
-              {place.transport && index < places.length - 1 ? (
+              {/* 다음 장소로 가는 이동 수단 연결선 */}
+              {transportText ? (
                 <View style={styles.transportInfo}>
                   <View style={styles.verticalLine} />
-                  <Text style={styles.transportText}>{place.transport}</Text>
+                  <Text style={styles.transportText}>{transportText}</Text>
                 </View>
               ) : null}
 
             </View>
-          ))}
+          )})}
           <View style={{ height: 20 }} />
         </ScrollView>
 
         <View style={styles.inputSection}>
           <Text style={styles.inputLabel}>수정사항을 입력하세요</Text>
           <View style={styles.llmInputWrapper}>
-            <TextInput style={styles.llmInput} placeholder="예: 장소B는 빼고 맛집 하나 추가해줘" />
-            <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <SendIcon width={24} height={24} />
-            </TouchableOpacity>
+            <TextInput 
+              style={styles.llmInput} 
+              placeholder="예: 장소B는 빼고 맛집 하나 추가해줘" 
+              value={updateMessage}
+              onChangeText={setUpdateMessage}
+              editable={!isUpdating}
+            />
+            {isUpdating ? (
+              <ActivityIndicator size="small" color="#52b19e" style={{ marginHorizontal: 10 }} />
+            ) : (
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={handleUpdateRoute}>
+                <SendIcon width={24} height={24} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -149,13 +393,18 @@ const RouteResultScreen = () => {
             </View>
 
             <Text style={styles.saveSectionTitle}>저장할 폴더 선택하세요</Text>
-            <View style={styles.folderTagsRow}>
-              <TouchableOpacity style={styles.folderTag}>
-                <Text style={styles.folderTagText}>해외</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.folderTag}>
-                <Text style={styles.folderTagText}>국내</Text>
-              </TouchableOpacity>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.folderTagsRow}>
+              {folders.map(folder => (
+                <TouchableOpacity 
+                  key={folder.folder_pk}
+                  style={[styles.folderTag, selectedFolderId === folder.folder_pk && styles.folderTagSelected]}
+                  onPress={() => setSelectedFolderId(folder.folder_pk)}
+                >
+                  <Text style={[styles.folderTagText, selectedFolderId === folder.folder_pk && styles.folderTagTextSelected]}>
+                    {folder.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
 
               {/* 🌟 2단계: 대망의 + 버튼! 누르면 폴더 생성 스위치 ON! */}
               <TouchableOpacity
@@ -165,14 +414,22 @@ const RouteResultScreen = () => {
                 <Text style={styles.folderTagPlusText}>+</Text>
               </TouchableOpacity>
 
-            </View>
+            </ScrollView>
 
             <Text style={styles.saveSectionTitle}>제목을 입력하세요</Text>
-            <TextInput style={styles.saveTitleInput} />
+            <TextInput 
+              style={styles.saveTitleInput} 
+              value={saveTitle}
+              onChangeText={setSaveTitle}
+            />
 
             <View style={styles.saveConfirmBtnRow}>
-              <TouchableOpacity style={styles.saveConfirmBtn} onPress={() => setSaveModalVisible(false)}>
-                <Text style={styles.saveConfirmBtnText}>저장하기</Text>
+              <TouchableOpacity style={styles.saveConfirmBtn} onPress={handleSaveItinerary} disabled={isSaving}>
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#111" />
+                ) : (
+                  <Text style={styles.saveConfirmBtnText}>저장하기</Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -184,6 +441,10 @@ const RouteResultScreen = () => {
       <FolderCreateModal
         visible={isFolderCreateVisible}
         onClose={() => setFolderCreateVisible(false)}
+        onSubmit={(folderName) => {
+          handleCreateFolder(folderName);
+          setFolderCreateVisible(false);
+        }}
       />
 
     </SafeAreaView>
@@ -231,7 +492,9 @@ const styles = StyleSheet.create({
   saveSectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#111', marginBottom: 10 },
   folderTagsRow: { flexDirection: 'row', marginBottom: 24 },
   folderTag: { borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 16, marginRight: 8 },
+  folderTagSelected: { backgroundColor: '#111', borderColor: '#111' },
   folderTagText: { fontSize: 14, color: '#333' },
+  folderTagTextSelected: { color: '#FFF', fontWeight: 'bold' },
   folderTagPlus: { borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 8, width: 36, alignItems: 'center', justifyContent: 'center' },
   folderTagPlusText: { fontSize: 16, color: '#555' },
   saveTitleInput: { 

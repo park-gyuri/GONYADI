@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal,
 import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRoutes } from '../context/RouteContext';
+import { requestNewRoute } from '../api/routeApi';
 import PinIcon from '../components/icons/pinIcon';
 import CalenderIcon from '../components/icons/calenderIcon';
 import HourglassIcon from '../components/icons/hourglassIcon';
@@ -18,6 +20,10 @@ const RecommendInputScreen = () => {
   // 0. 여행지 상태 관리
   const [destination, setDestination] = useState(initialDestination || '');
   const [isDestinationError, setIsDestinationError] = useState(false);
+
+  // 로딩 및 전역 Context 상태
+  const [isLoading, setIsLoading] = useState(false);
+  const { setCurrentRecommendation, setCurrentFormData } = useRoutes();
 
   React.useEffect(() => {
     if (initialDestination) {
@@ -39,8 +45,11 @@ const RecommendInputScreen = () => {
   const [days, setDays] = useState('');
   const [isDurationError, setIsDurationError] = useState(false); // 미입력 시 테두리 색상용 상태
 
+  // 상세 요청 텍스트
+  const [userMessage, setUserMessage] = useState('');
+
   // 제출 버튼 클릭 시 유효성 검사 로직
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     let hasError = false;
 
     // 여행지 검사
@@ -69,8 +78,37 @@ const RecommendInputScreen = () => {
 
     if (hasError) return; // 에러가 하나라도 있으면 함수 종료
 
-    // 유효성 통과 시 다음 화면 이동!
-    router.push('/route-result');
+    setIsLoading(true);
+
+    try {
+      // 폼 데이터를 객체로 묶기
+      const formData = {
+        destination,
+        startDate,
+        endDate,
+        nights,
+        days,
+        personCount,
+        selectedBudget,
+        selectedTags,
+        userMessage,
+      };
+
+      // API 호출
+      const result = await requestNewRoute(formData);
+
+      // 결과를 Context에 저장
+      setCurrentRecommendation(result);
+      setCurrentFormData(formData);
+
+      // 성공 시 다음 화면 이동!
+      router.push('/route-result');
+
+    } catch (error) {
+      Alert.alert('경로 추천 실패', error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 캘린더 날짜 클릭 시 로직
@@ -388,7 +426,13 @@ const RecommendInputScreen = () => {
                   <Text style={styles.tagPlusText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TextInput style={styles.textArea} multiline placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어." />
+              <TextInput 
+                style={styles.textArea} 
+                multiline 
+                placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어." 
+                value={userMessage}
+                onChangeText={setUserMessage}
+              />
             </View>
 
             {/* 하단 경고 문구 표시: 태그 개수 검증 에러 */}
@@ -397,9 +441,15 @@ const RecommendInputScreen = () => {
             )}
           </View>
 
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
-            <Text style={styles.submitButtonText}>경로 추천받기</Text>
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={isLoading}>
+            {isLoading ? (
+              <Text style={styles.submitButtonText}>경로 탐색 중... 잠시만 기다려주세요</Text>
+            ) : (
+              <>
+                <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
+                <Text style={styles.submitButtonText}>경로 추천받기</Text>
+              </>
+            )}
           </TouchableOpacity>
 
         </View>

@@ -13,7 +13,8 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
 [장소 추천 규칙]
 1. 공식 명칭 사용: 네이버 지도나 구글 지도에서 검색했을 때 바로 나오는 공식 명칭만 사용해.
 2. 구체적 명소 선정: 뭉뚱그린 표현 대신 구체적인 장소명을 추천해.
-3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해."""
+3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해.
+4. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",

@@ -24,8 +24,13 @@ async def handle_recommendation(
     # 1. Gemini로 장소 추천받기
     places_from_ai = get_gemini_places(prompt)
 
-    # 2. DB에 장소 저장/갱신
+    # 2. DB에 장소 저장/갱신 (Google Places API를 통해 좌표가 정확히 보정됨)
     db_places = place_crud.get_or_create_places_bulk(places_from_ai, session)
+
+    # 3. Gemini가 추천한 결과(places_from_ai)에 보정된 좌표(lat, lng) 덮어쓰기
+    for ai_place, db_place in zip(places_from_ai, db_places):
+        ai_place.lat = db_place.lat
+        ai_place.lng = db_place.lng
 
     # 3. Google Routes API로 장소 간 경로 계산
     #    유저가 선택한 이동 수단(transports)만 조회

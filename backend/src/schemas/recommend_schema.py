@@ -17,6 +17,9 @@ class ThemeCategories(StrEnum):
     LEISURE  = "오락/레저"
     HISTORY  = "역사"
     CULTURE  = "문화"
+    SHOPPING = "쇼핑"
+    FESTIVAL = "축제"
+    NATURE   = "자연"
 
 
 class TransportCategories(StrEnum):
@@ -29,6 +32,18 @@ class TransportCategories(StrEnum):
 class ConditionCategories(StrEnum):
     WHEELCHAIR = "휠체어"
     PET        = "반려동물 동반"
+    CHILD      = "어린이 동반"
+
+
+# ── Gemini에게 추천받을 장소 스키마 ───────────────────────────────────────
+class PlaceResult(BaseModel):
+    # Gemini가 추천하는 장소 하나
+    name:        str    # 장소 이름
+    lat:         float  # 위도
+    lng:         float  # 경도
+    reason:      str    # 추천 사유
+    duration:    int    # 예상 소요 시간 (분)
+    category:    str    # 장소 카테고리
 
 
 # ── 요청 스키마 ───────────────────────────────────────────────────
@@ -59,6 +74,9 @@ class RecommendRequest(BaseModel):
 
     # 상세 요청 
     user_message: str = Field("", max_length=500)
+
+    # 기존 일정 (재추천 기능 시 프론트엔드에서 기존에 받았던 장소 배열을 다시 전달)
+    original_places: Optional[list[PlaceResult]] = Field(default=None)
 
 
 
@@ -94,17 +112,6 @@ class RecommendRequest(BaseModel):
         '''
 
         return self
-
-
-# ── Gemini에게 추천받을 장소 스키마 ───────────────────────────────────────
-class PlaceResult(BaseModel):
-    # Gemini가 추천하는 장소 하나
-    name:        str    # 장소 이름
-    lat:         float  # 위도
-    lng:         float  # 경도
-    reason:      str    # 추천 사유
-    duration:    int    # 예상 소요 시간 (분)
-    category:    str    # 장소 카테고리
 
 
 # ── Google Routes API 경로 정보 스키마 ────────────────────────────────────

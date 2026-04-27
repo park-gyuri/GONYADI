@@ -1,17 +1,26 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import FolderCreateModal from '../components/FolderCreateModal';
 import FileIcon from '../components/icons/fileIcon';
 import GrayMarkerIcon from '../components/icons/graymarkerIcon';
 import StarIcon from '../components/icons/starIcon';
 import { useRoutes } from '../context/RouteContext';
+import { fetchFolders, createFolder, fetchAllItineraries } from '../api/saveApi';
 
 const RouteScreen = () => {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('국내');
-  const [folders, setFolders] = useState(['국내', '해외']);
+
+  // 폴더 관련 상태 (백엔드 연동)
+  const [folders, setFolders] = useState([]);
+  const [activeTab, setActiveTab] = useState(null); // 선택된 folder_pk
+  const [activeTabName, setActiveTabName] = useState('국내');
+
+  // 저장된 일정 목록 (백엔드 연동)
+  const [itineraries, setItineraries] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 모달 제어 상태
   const [isModalVisible, setModalVisible] = useState(false);
@@ -20,31 +29,57 @@ const RouteScreen = () => {
   const [isOptionVisible, setOptionVisible] = useState(false);
 
   // 🌟 전역 Context에서 데이터 가져오기!!
-  const { allRoutes, setAllRoutes, toggleFavorite } = useRoutes();
+  const { toggleFavorite } = useRoutes();
 
-  // 현재 선택된 탭에 맞는 데이터만 필터링하고 즐겨찾기를 위로 정렬
-  const filteredRoutes = allRoutes
-    .filter(route => route.category === activeTab)
-    .sort((a, b) => {
-      if (a.isFavorite === b.isFavorite) return 0;
-      return a.isFavorite ? -1 : 1;
-    });
+  // 화면에 진입할 때마다 백엔드에서 폴더 + 일정 데이터를 불러옴
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
-  // 폴더 제출 처리 (생성 또는 수정)
-  const handleSubmitFolder = (name) => {
-    if (modalMode === 'create') {
-      setFolders([...folders, name]);
-      setActiveTab(name);
-    } else {
-      setFolders(folders.map(f => f === selectedFolder ? name : f));
-      if (activeTab === selectedFolder) setActiveTab(name);
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [foldersData, itinerariesData] = await Promise.all([
+        fetchFolders(),
+        fetchAllItineraries()
+      ]);
+      setFolders(foldersData);
+      setItineraries(itinerariesData);
+
+      // 첫 번째 폴더를 기본 활성 탭으로 설정
+      if (foldersData.length > 0 && activeTab === null) {
+        setActiveTab(foldersData[0].folder_pk);
+        setActiveTabName(foldersData[0].name);
+      }
+    } catch (error) {
+      console.error('[RouteScreen] 데이터 로딩 실패:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 현재 선택된 폴더에 속한 일정만 필터링
+  const filteredItineraries = itineraries.filter(it => it.folder_id === activeTab);
+
+  // 폴더 생성 처리
+  const handleSubmitFolder = async (name) => {
+    try {
+      const newFolder = await createFolder(name);
+      setFolders([...folders, newFolder]);
+      setActiveTab(newFolder.folder_pk);
+      setActiveTabName(newFolder.name);
+    } catch (error) {
+      Alert.alert('오류', '폴더 생성에 실패했습니다.');
     }
     setModalVisible(false);
   };
 
   // 폴더 삭제 처리
   const handleDeleteFolder = () => {
-    if (selectedFolder === '국내' || selectedFolder === '해외') {
+    const folder = folders.find(f => f.folder_pk === activeTab);
+    if (folder && (folder.name === '국내' || folder.name === '해외')) {
       Alert.alert("알림", "기본 폴더는 삭제할 수 없습니다.");
       setOptionVisible(false);
       return;
@@ -53,12 +88,22 @@ const RouteScreen = () => {
       { text: "취소", style: "cancel" },
       {
         text: "삭제", style: "destructive", onPress: () => {
-          setFolders(folders.filter(f => f !== selectedFolder));
-          setActiveTab('국내');
+          // TODO: 백엔드 삭제 API 연동 시 여기에 추가
+          setFolders(folders.filter(f => f.name !== selectedFolder));
+          if (folders.length > 0) {
+            setActiveTab(folders[0].folder_pk);
+            setActiveTabName(folders[0].name);
+          }
           setOptionVisible(false);
         }
       }
     ]);
+  };
+
+  // 날짜 포맷 헬퍼
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    return dateStr.replace(/-/g, '.');
   };
 
   return (
@@ -67,14 +112,14 @@ const RouteScreen = () => {
 
       {/* 📂 상단 폴더 탭 영역 */}
       <View style={styles.tabContainer}>
-        {folders.map((tab) => (
+        {folders.map((folder) => (
           <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-            onPress={() => setActiveTab(tab)}
-            onLongPress={() => { setSelectedFolder(tab); setOptionVisible(true); }}
+            key={folder.folder_pk}
+            style={[styles.tabButton, activeTab === folder.folder_pk && styles.activeTabButton]}
+            onPress={() => { setActiveTab(folder.folder_pk); setActiveTabName(folder.name); }}
+            onLongPress={() => { setSelectedFolder(folder.name); setOptionVisible(true); }}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+            <Text style={[styles.tabText, activeTab === folder.folder_pk && styles.activeTabText]}>{folder.name}</Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={styles.plusButton} onPress={() => { setModalMode('create'); setModalVisible(true); }}>
@@ -82,33 +127,43 @@ const RouteScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* 📍 [복구 완료!] 저장된 경로 리스트 영역 */}
+      {/* 📍 저장된 경로 리스트 영역 */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {filteredRoutes.length > 0 ? (
-          filteredRoutes.map((route) => (
+        {isLoading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color="#A9E2D9" />
+            <Text style={{ marginTop: 12, color: '#999' }}>불러오는 중...</Text>
+          </View>
+        ) : filteredItineraries.length > 0 ? (
+          filteredItineraries.map((itinerary) => (
             <TouchableOpacity
-              key={route.id}
+              key={itinerary.itinerary_pk}
               style={styles.routeCard}
-              onPress={() => router.push({ pathname: '/saved-route-detail', params: { id: route.id, title: route.title } })}
+              onPress={() => router.push({ 
+                pathname: '/saved-route-detail', 
+                params: { 
+                  id: itinerary.itinerary_pk, 
+                  title: itinerary.title 
+                } 
+              })}
             >
               <View style={styles.iconBox}>
                 <FileIcon width={24} height={24} />
               </View>
               <View style={styles.routeInfo}>
-                <Text style={styles.routeTitle}>{route.title}</Text>
+                <Text style={styles.routeTitle}>{itinerary.title}</Text>
                 <View style={styles.routeDetailsRow}>
                   <GrayMarkerIcon width={14} height={14} style={{ marginRight: 4 }} />
-                  <Text style={styles.routeDetails}>{route.location} | {route.date}</Text>
+                  <Text style={styles.routeDetails}>
+                    {itinerary.region} | {formatDate(itinerary.start_date) || formatDate(itinerary.created_at?.substring(0, 10))}
+                  </Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.favoriteBtn} onPress={() => toggleFavorite(route.id)}>
-                <StarIcon isFilled={route.isFavorite} />
-              </TouchableOpacity>
             </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>'{activeTab}' 폴더에 저장된 경로가 없습니다.</Text>
+            <Text style={styles.emptyText}>'{activeTabName}' 폴더에 저장된 경로가 없습니다.</Text>
           </View>
         )}
         <View style={{ height: 100 }} />

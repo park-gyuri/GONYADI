@@ -11,6 +11,12 @@ export const RouteProvider = ({ children }) => {
     { id: 5, title: '2026 일본 여행', location: '일본 도쿄/오사카', date: '2026.05.20', category: '해외', isFavorite: false },
   ]);
 
+  // 방금 추천받은 경로 데이터를 담는 임시 저장소
+  const [currentRecommendation, setCurrentRecommendation] = useState(null);
+
+  // 현재 추천에 사용된 폼 데이터를 저장하는 임시 저장소 (재추천 시 활용)
+  const [currentFormData, setCurrentFormData] = useState(null);
+
   const toggleFavorite = (id) => {
     setAllRoutes(prev => prev.map(route => 
       route.id === id ? { ...route, isFavorite: !route.isFavorite } : route
@@ -18,7 +24,11 @@ export const RouteProvider = ({ children }) => {
   };
 
   return (
-    <RouteContext.Provider value={{ allRoutes, setAllRoutes, toggleFavorite }}>
+    <RouteContext.Provider value={{ 
+      allRoutes, setAllRoutes, toggleFavorite,
+      currentRecommendation, setCurrentRecommendation,
+      currentFormData, setCurrentFormData
+    }}>
       {children}
     </RouteContext.Provider>
   );
