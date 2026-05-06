@@ -2,7 +2,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 from enum import StrEnum
 from datetime import date
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 # ── 카테고리 정의 ─────────────────────────────────────────────────────
@@ -17,6 +17,9 @@ class ThemeCategories(StrEnum):
     LEISURE  = "오락/레저"
     HISTORY  = "역사"
     CULTURE  = "문화"
+    SHOPPING = "쇼핑"
+    FESTIVAL = "축제"
+    NATURE   = "자연"
 
 
 class TransportCategories(StrEnum):
@@ -29,6 +32,38 @@ class TransportCategories(StrEnum):
 class ConditionCategories(StrEnum):
     WHEELCHAIR = "휠체어"
     PET        = "반려동물 동반"
+    CHILD      = "어린이 동반"
+
+
+# ── Gemini에게 추천받을 장소 스키마 ───────────────────────────────────────
+class PlaceResult(BaseModel):
+    # Gemini가 추천하는 장소 하나
+    name:        str    # 장소 이름
+    lat:         float  # 위도
+    lng:         float  # 경도
+    reason:      str    # 추천 사유
+    duration:    int    # 예상 소요 시간 (분)
+    category:    str    # 장소 카테고리
+
+
+# ── [RAG] DB에서 꺼낸 후보 장소 스키마 ────────────────────────────────────────
+class PlaceCandidate(BaseModel):
+    """DB의 Places 테이블에서 조회한 후보 장소 (LLM에게 넘겨줄 데이터)"""
+    place_pk:    int    # DB PK (LLM이 이 ID로만 선택)
+    name:        str
+    lat:         float
+    lng:         float
+    category:    str
+    distance_km: float  # 중심점으로부터의 거리
+
+
+# ── [RAG] LLM(Gemini)이 후보 리스트를 보고 반환하는 최소 스키마 ──────────────────
+class CuratedPlaceResult(BaseModel):
+    """Gemini가 후보 리스트 안에서만 선택해 반환하는 스키마 (새 장소 생성 금지)"""
+    place_pk: int   # PlaceCandidate.place_pk 중 하나여야 함
+    order:    int   # 방문 순서 (1부터 시작)
+    reason:   str   # 추천 사유
+    duration: int   # 예상 소요 시간 (분)
 
 
 # ── 요청 스키마 ───────────────────────────────────────────────────
@@ -59,6 +94,15 @@ class RecommendRequest(BaseModel):
 
     # 상세 요청 
     user_message: str = Field("", max_length=500)
+
+    # 기존 일정 (재추천 기능 시 프론트엔드에서 기존에 받았던 장소 배열을 다시 전달)
+    original_places: Optional[list[PlaceResult]] = Field(default=None)
+
+    # [RAG] 중심 좌표 (프론트엔드에서 지도 중심점 또는 사용자 현재 위치 전달)
+    # None이면 region 문자열 기반 기존 방식으로 fallback
+    center_lat: Optional[float] = Field(default=None, description="검색 중심 위도")
+    center_lng: Optional[float] = Field(default=None, description="검색 중심 경도")
+    radius_km:  Optional[float] = Field(default=None, ge=0.5, le=50.0, description="검색 반경(km). None이면 이동수단 기반 자동 결정")
 
 
 
@@ -94,17 +138,6 @@ class RecommendRequest(BaseModel):
         '''
 
         return self
-
-
-# ── Gemini에게 추천받을 장소 스키마 ───────────────────────────────────────
-class PlaceResult(BaseModel):
-    # Gemini가 추천하는 장소 하나
-    name:        str    # 장소 이름
-    lat:         float  # 위도
-    lng:         float  # 경도
-    reason:      str    # 추천 사유
-    duration:    int    # 예상 소요 시간 (분)
-    category:    str    # 장소 카테고리
 
 
 # ── Google Routes API 경로 정보 스키마 ────────────────────────────────────

@@ -1,5 +1,5 @@
 
-from src.schemas.recommend_schema import PlaceResult
+from src.schemas.recommend_schema import PlaceResult, CuratedPlaceResult, PlaceCandidate
 from google import genai
 from google.genai import types
 import os
@@ -13,7 +13,8 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
 [장소 추천 규칙]
 1. 공식 명칭 사용: 네이버 지도나 구글 지도에서 검색했을 때 바로 나오는 공식 명칭만 사용해.
 2. 구체적 명소 선정: 뭉뚱그린 표현 대신 구체적인 장소명을 추천해.
-3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해."""
+3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해.
+4. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -36,6 +37,83 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
         print(f"get_gemini_places 파싱 에러: {e}")
         print(f"원본 응답: {response.text}")
         return []
+
+
+# ── [RAG] Step 3: LLM Curation — 후보 풀 안에서만 선택 ───────────────────────
+def get_gemini_curated_places(
+    prompt: str,
+    candidates: list[PlaceCandidate],
+) -> list[PlaceResult]:
+    """
+    RAG 파이프라인 전용 Gemini 호출.
+
+    - LLM은 CuratedPlaceResult(place_pk, order, reason, duration)만 반환한다.
+    - 반환된 place_pk를 candidates 풀과 교차검증해 허위 pk를 자동 제거한다.
+    - 검증된 pk로 candidates에서 실제 좌표·이름을 조합해 PlaceResult 리스트로 반환한다.
+    """
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    system_instruction = """너는 여행 일정 큐레이터야.
+반드시 아래 규칙을 준수해:
+
+[절대 규칙]
+1. 프롬프트의 [검증된 장소 후보] 리스트에 있는 place_pk만 사용해.
+2. 리스트에 없는 place_pk를 절대 출력하지 마.
+3. 새로운 장소 이름이나 좌표를 만들어내지 마.
+4. place_pk, order, reason, duration 필드만 반환해.
+5. order는 1부터 시작하는 방문 순서야."""
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=list[CuratedPlaceResult],
+        ),
+    )
+
+    try:
+        curated: list[CuratedPlaceResult] = response.parsed or []
+    except Exception as e:
+        print(f"[RAG Gemini] 파싱 에러: {e}\n원본: {response.text}")
+        return []
+
+    # 후보 풀 인덱스 (place_pk → PlaceCandidate)
+    candidate_map: dict[int, PlaceCandidate] = {c.place_pk: c for c in candidates}
+
+    # 교차검증: LLM이 반환한 place_pk가 실제 후보에 있는지 확인
+    valid_pks = set(candidate_map.keys())
+    results: list[PlaceResult] = []
+    seen_pks: set[int] = set()
+
+    for item in sorted(curated, key=lambda x: x.order):
+        if item.place_pk not in valid_pks:
+            print(f"[RAG 검증] 허위 place_pk={item.place_pk} 제거됨 (후보에 없음)")
+            continue
+        if item.place_pk in seen_pks:
+            print(f"[RAG 검증] 중복 place_pk={item.place_pk} 제거됨")
+            continue
+        seen_pks.add(item.place_pk)
+
+        cand = candidate_map[item.place_pk]
+        results.append(
+            PlaceResult(
+                name=cand.name,
+                lat=cand.lat,
+                lng=cand.lng,
+                reason=item.reason,
+                duration=item.duration,
+                category=cand.category,
+            )
+        )
+
+    print(
+        f"[RAG Gemini] 큐레이션 완료: "
+        f"LLM 반환 {len(curated)}개 → 검증 후 {len(results)}개"
+    )
+    return results
+
 '''
 import os
 import re
