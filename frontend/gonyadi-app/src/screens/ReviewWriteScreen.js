@@ -1,31 +1,58 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import DownloadIcon from '../components/icons/downloadIcon';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import ReviewSaveModal from '../components/ReviewSaveModal';
+import { useRoutes } from '../context/RouteContext';
 
 const ReviewWriteScreen = () => {
   const router = useRouter();
-  const [ratings, setRatings] = useState({ 1: 0, 2: 0, 3: 0, 4: 0 });
+  const { id } = useLocalSearchParams();
+  const { allRoutes, addReview } = useRoutes();
+  
+  // 선택된 경로 찾기
+  const selectedRoute = allRoutes.find(r => String(r.id) === String(id));
+  
+  // 장소 데이터 추출
+  const places = selectedRoute?.recommendation_data?.places || 
+                 selectedRoute?.recommendation_data?.schedule?.flatMap(d => d.places) || [];
+
+  const [ratings, setRatings] = useState({});
+  const [comments, setComments] = useState({});
+  const [mainTitle, setMainTitle] = useState(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
   const [isSaveModalVisible, setSaveModalVisible] = useState(false);
 
   const handleSave = () => {
-    // 팝업이 사라지게만 처리
-    setSaveModalVisible(false);
-  };
+    if (!mainTitle.trim()) {
+      alert('제목을 입력해주세요.');
+      return;
+    }
 
-  const places = [
-    { id: 1, name: '장소A', transport: '도보 20분 이동' },
-    { id: 2, name: '장소B', transport: '버스 20분 이동' },
-    { id: 3, name: '장소C', transport: '도보 10분 이동' },
-    { id: 4, name: '장소D', transport: null },
-  ];
+    const newReview = {
+      id: Date.now(),
+      title: mainTitle,
+      content: Object.values(comments)[0] || '내용 없음', // 첫 번째 장소 댓글을 대표 내용으로
+      thumbnail: null,
+      routeId: id,
+      ratings,
+      comments,
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    addReview(newReview);
+    setSaveModalVisible(false);
+    router.replace('/review'); // 목록으로 이동
+  };
 
   const handleRating = (placeId, score) => {
     setRatings(prev => ({ ...prev, [placeId]: score }));
+  };
+
+  const handleCommentChange = (placeId, text) => {
+    setComments(prev => ({ ...prev, [placeId]: text }));
   };
 
   return (
@@ -46,6 +73,8 @@ const ReviewWriteScreen = () => {
             style={styles.mainTitleInput}
             placeholder="제목을 입력하세요"
             placeholderTextColor="#888"
+            value={mainTitle}
+            onChangeText={setMainTitle}
           />
         </View>
 
@@ -84,6 +113,8 @@ const ReviewWriteScreen = () => {
                       placeholder="내용을 입력하세요"
                       placeholderTextColor="#888"
                       multiline={true}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleCommentChange(item.id, text)}
                     />
                   </View>
 
@@ -100,11 +131,7 @@ const ReviewWriteScreen = () => {
           })}
         </View>
 
-        {/* 🌟 수정 포인트: 스크롤 안쪽, 리스트가 끝난 바로 아래에 포인트 박스를 배치했습니다! */}
-        <View style={styles.bottomStatusBox}>
-          <Text style={styles.statusLabel}>후기 완성도</Text>
-          <Text style={styles.statusValue}>0 % 완료</Text>
-        </View>
+
 
         {/* 🌟 탭바에 가려지지 않게 스크롤 맨 밑에 여유 공간 확보 */}
         <View style={{ height: 120 }} />

@@ -12,10 +12,9 @@ const ReviewSelectScreen = () => {
 
   // 🌟 1. 현재 어떤 폴더(탭)가 선택되었는지 기억하는 상태 (기본값: 국내)
   const [activeTab, setActiveTab] = useState('국내');
-  const folders = ['국내', '해외']; // 폴더 생성 기능을 제외하므로 고정된 리스트 사용
 
   // 🌟 2. 전역 Context에서 데이터 가져오기!!
-  const { allRoutes, toggleFavorite } = useRoutes();
+  const { folders, allRoutes, toggleFavorite } = useRoutes();
 
   // 🌟 3. 현재 탭에 맞는 데이터만 필터링 및 즐겨찾기 정렬
   const filteredRoutes = allRoutes
@@ -39,33 +38,33 @@ const ReviewSelectScreen = () => {
 
       {/* 📂 상단 폴더 탭 영역 */}
       <View style={styles.tabContainer}>
-        {folders.map((tab) => (
+        {folders.map((folder) => (
           <TouchableOpacity
-            key={tab}
+            key={folder.folder_pk}
             style={[
               styles.tabButton,
-              activeTab === tab && styles.activeTabButton
+              activeTab === folder.name && styles.activeTabButton
             ]}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => setActiveTab(folder.name)}
           >
             <Text style={[
               styles.tabText,
-              activeTab === tab && styles.activeTabText
+              activeTab === folder.name && styles.activeTabText
             ]}>
-              {tab}
+              {folder.name}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* 📍 선택할 경로 리스트 */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
         {filteredRoutes.length > 0 ? (
           filteredRoutes.map((route) => (
             <TouchableOpacity
               key={route.id}
               style={styles.routeCard}
-              onPress={() => router.push('/review-write')} // 누르면 후기 작성 화면으로!
+              onPress={() => router.push({ pathname: '/review-write', params: { id: route.id } })} // 누르면 후기 작성 화면으로!
             >
               <View style={styles.iconBox}>
                 <FileIcon width={24} height={24} />
@@ -84,7 +83,7 @@ const ReviewSelectScreen = () => {
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>해당 폴더에 저장된 경로가 없습니다.</Text>
+            <Text style={styles.emptyText}>저장된 경로가 없습니다.</Text>
           </View>
         )}
         <View style={{ height: 100 }} />
@@ -118,7 +117,7 @@ const styles = StyleSheet.create({
   routeDetails: { fontSize: 13, color: '#888' },
   favoriteBtn: { padding: 8, paddingRight: 0 },
 
-  emptyContainer: { marginTop: 100, alignItems: 'center' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 15 },
 });
 

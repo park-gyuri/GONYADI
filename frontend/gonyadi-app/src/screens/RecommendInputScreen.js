@@ -1,8 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Alert, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { requestNewRoute } from '../api/routeApi';
+import { 
+  mockRouteResultBusan, 
+  mockRouteResultDaegu, 
+  mockRouteResultDaejeon, 
+  mockRouteResultJeju, 
+  mockRouteResultMungyeong, 
+  mockRouteResultOsaka, 
+  mockRouteResultPhuQuoc, 
+  mockRouteResultSapporo,
+  mockApiData 
+} from '../data/dummyData';
 import PinIcon from '../components/icons/pinIcon';
 import CalenderIcon from '../components/icons/calenderIcon';
 import HourglassIcon from '../components/icons/hourglassIcon';
@@ -39,8 +52,11 @@ const RecommendInputScreen = () => {
   const [days, setDays] = useState('');
   const [isDurationError, setIsDurationError] = useState(false); // 미입력 시 테두리 색상용 상태
 
+  // 로딩 상태 추가
+  const [isLoading, setIsLoading] = useState(false);
+
   // 제출 버튼 클릭 시 유효성 검사 로직
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     let hasError = false;
 
     // 여행지 검사
@@ -69,8 +85,52 @@ const RecommendInputScreen = () => {
 
     if (hasError) return; // 에러가 하나라도 있으면 함수 종료
 
-    // 유효성 통과 시 다음 화면 이동!
-    router.push('/route-result');
+    setIsLoading(true);
+    try {
+      // 프론트엔드 UI 태그를 백엔드 스키마 Enum으로 변환
+      const mappedTags = selectedTags.map(tag => {
+        if (tag === '음식') return '맛집';
+        if (tag === '액티비티') return '오락/레저';
+        if (tag === '뚜벅이') return '도보';
+        return tag;
+      });
+
+      const validTransports = mappedTags.filter(tag => ['도보', '자동차', '자전거', '대중교통'].includes(tag));
+      const validThemes = mappedTags.filter(tag => ['힐링', '맛집', '사진', '전시', '체험', '카페', '오락/레저', '역사', '문화', '쇼핑', '축제', '자연'].includes(tag));
+      const validConditions = mappedTags.filter(tag => ['휠체어', '반려동물 동반', '어린이 동반'].includes(tag));
+
+      const formData = {
+        region: destination,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        nights: nights ? parseInt(nights, 10) : undefined,
+        days: days ? parseInt(days, 10) : undefined,
+        number_of_people: personCount,
+        budget_per_person: selectedBudget ? parseInt(selectedBudget.replace(/[^0-9]/g, '')) : undefined,
+        transports: validTransports.length > 0 ? validTransports : ['도보'],
+        themes: validThemes.length > 0 ? validThemes : ['힐링'],
+        conditions: validConditions,
+        user_message: "추가 요청사항",
+      };
+
+      console.log('API Request Payload:', formData);
+
+      // 🌟 백엔드 API 호출로 복구
+      const data = await requestNewRoute(formData);
+
+      setIsLoading(false);
+      router.push({
+        pathname: '/route-result',
+        params: {
+          response: JSON.stringify(data),
+          originalRequest: JSON.stringify(formData)
+        }
+      });
+    } catch (error) {
+      setIsLoading(false);
+      Alert.alert('에러', '경로 추천을 가져오는데 실패했습니다. 백엔드 서버 상태를 확인해주세요.');
+      console.error(error);
+    }
   };
 
   // 캘린더 날짜 클릭 시 로직
@@ -236,11 +296,13 @@ const RecommendInputScreen = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={true}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
       >
         <View style={styles.formBox}>
 
@@ -397,13 +459,19 @@ const RecommendInputScreen = () => {
             )}
           </View>
 
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
-            <Text style={styles.submitButtonText}>경로 추천받기</Text>
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={isLoading}>
+            {isLoading ? (
+              <Text style={styles.submitButtonText}>경로 탐색 중... 잠시만 기다려주세요</Text>
+            ) : (
+              <>
+                <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
+                <Text style={styles.submitButtonText}>경로 추천받기</Text>
+              </>
+            )}
           </TouchableOpacity>
 
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* ================================================== */}
       {/* 1. [바텀 시트 (카테고리 선택 모달)] */}
