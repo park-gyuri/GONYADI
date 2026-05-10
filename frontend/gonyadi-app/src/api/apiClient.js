@@ -8,7 +8,10 @@
 // 나중에 배포된 서버 주소가 나오면 (예: https://api.gonyadi.com) 여기에 대입
 // BASE_URL이 백엔드 서버 주소. 후에 수정하면 됨
 // 로컬 테스트 중이라면 http://localhost:8080 (iOS) 또는 http://10.0.2.2:8080 (Android) 등을 사용
-export const BASE_URL = 'http://10.0.2.2:8080';
+import { Platform } from 'react-native';
+
+// 백엔드 서버 주소 (맥북 실제 IP: 192.168.35.162, 안드로이드 에뮬레이터: 10.0.2.2)
+export const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://192.168.35.162:8000';
 
 // 2. 공통 호출 함수 만들기
 export const apiClient = async (endpoint, options = {}) => {
@@ -42,7 +45,13 @@ export const apiClient = async (endpoint, options = {}) => {
       try {
         // 백엔드에서 JSON으로 에러 원인을 보내줬다면 그걸 읽어옵니다.
         const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
+        console.error("백엔드 상세 에러:", JSON.stringify(errorData, null, 2));
+
+        if (errorData.detail && Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+        } else {
+          errorMessage = errorData.message || errorMessage;
+        }
       } catch (e) {
         // 백엔드가 JSON 응답조차 안 줄 경우의 대비책
       }

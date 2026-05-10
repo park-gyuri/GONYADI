@@ -58,3 +58,10 @@ def get_all_itineraries_by_user(session: Session, user_id: int) -> list[Itinerar
         Itineraries.user_id == user_id
     ).order_by(Itineraries.created_at.desc())
     return session.exec(statement).all()
+
+def get_itinerary_by_id(session: Session, itinerary_id: int, user_id: int) -> Itineraries:
+    statement = select(Itineraries).where(
+        Itineraries.itinerary_pk == itinerary_id,
+        Itineraries.user_id == user_id
+    )
+    return session.exec(statement).first()

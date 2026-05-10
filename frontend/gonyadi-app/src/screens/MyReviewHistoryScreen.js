@@ -1,16 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useRoutes } from '../context/RouteContext';
 
 const MyReviewHistoryScreen = () => {
   const router = useRouter();
-
-  const reviews = [
-    { id: 1, title: '[2박 3일 부산 여행] 해안도로 드라이브 여행', content: '부산까지 자차로 운전하면서 갔어요:) 바다를 보며 드라이브하니 기분이 너무 좋았고 경치가 너무 좋...' },
-    { id: 2, title: '[2박 3일 부산 여행] 해안도로 드라이브 여행', content: '부산까지 자차로 운전하면서 갔어요:) 바다를 보며 드라이브하니 기분이 너무 좋았고 경치가 너무 좋...' },
-    { id: 3, title: '[2박 3일 부산 여행] 해안도로 드라이브 여행', content: '부산까지 자차로 운전하면서 갔어요:) 바다를 보며 드라이브하니 기분이 너무 좋았고 경치가 너무 좋...' },
-  ];
+  const { reviews } = useRoutes();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -25,23 +21,33 @@ const MyReviewHistoryScreen = () => {
       </View>
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {reviews.map((review) => (
-          <TouchableOpacity
-            key={review.id}
-            style={styles.reviewCard}
-            activeOpacity={0.9}
-            onPress={() => router.push('/review-detail')}
-          >
-            <View style={styles.imageSection}>
-              <View style={styles.imagePlaceholder} />
-            </View>
+        {reviews.length > 0 ? (
+          reviews.map((review) => (
+            <TouchableOpacity
+              key={review.id}
+              style={styles.reviewCard}
+              activeOpacity={0.9}
+              onPress={() => router.push({ pathname: '/review-detail', params: { id: review.id } })}
+            >
+              <View style={styles.imageSection}>
+                {review.thumbnail ? (
+                  <Image source={{ uri: review.thumbnail }} style={styles.imagePlaceholder} />
+                ) : (
+                  <View style={styles.imagePlaceholder} />
+                )}
+              </View>
 
-            <View style={styles.textSection}>
-              <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
-              <Text style={styles.reviewContent} numberOfLines={2}>{review.content}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.textSection}>
+                <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
+                <Text style={styles.reviewContent} numberOfLines={2}>{review.content}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 }}>
+            <Text style={{ color: '#999' }}>작성한 후기가 없습니다.</Text>
+          </View>
+        )}
 
         {/* 하단 여백 */}
         <View style={{ height: 120 }} />

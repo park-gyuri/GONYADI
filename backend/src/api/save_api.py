@@ -28,3 +28,10 @@ def get_itineraries(folder_id: int, session: Session = Depends(get_session)):
 @router.get("/itineraries", response_model=list[ItineraryResponse])
 def get_all_itineraries(session: Session = Depends(get_session)):
     return save_crud.get_all_itineraries_by_user(session=session, user_id=TEMP_USER_ID)
+
+@router.get("/itineraries/{itinerary_id}", response_model=ItineraryResponse)
+def get_itinerary_detail(itinerary_id: int, session: Session = Depends(get_session)):
+    itinerary = save_crud.get_itinerary_by_id(session=session, itinerary_id=itinerary_id, user_id=TEMP_USER_ID)
+    if not itinerary:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+    return itinerary

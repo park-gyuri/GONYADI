@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 30, // 약간 더 트렌디한 알약 모양
     borderWidth: 1,
     borderColor: '#CDE5DE',
     height: 48,

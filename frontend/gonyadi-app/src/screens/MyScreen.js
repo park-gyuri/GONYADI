@@ -8,8 +8,11 @@ import MyIcon from '../components/icons/myIcon';
 import SettingIcon from '../components/icons/settingIcon';
 import PencilIcon from '../components/icons/pencilIcon';
 
+import { useRoutes } from '../context/RouteContext';
+
 const MyScreen = () => {
   const router = useRouter();
+  const { allRoutes, reviews } = useRoutes();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -41,7 +44,7 @@ const MyScreen = () => {
             activeOpacity={0.8}
             onPress={() => router.push('/route')}
           >
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{allRoutes.length}</Text>
             <Text style={styles.statLabel}>저장된 경로</Text>
           </TouchableOpacity>
 
@@ -52,7 +55,7 @@ const MyScreen = () => {
             activeOpacity={0.8}
             onPress={() => router.push('/my-review-history')}
           >
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{reviews.length}</Text>
             <Text style={styles.statLabel}>작성한 후기</Text>
           </TouchableOpacity>
         </View>
