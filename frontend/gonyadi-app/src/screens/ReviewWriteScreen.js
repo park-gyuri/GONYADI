@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import DownloadIcon from '../components/icons/downloadIcon';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
@@ -22,29 +23,53 @@ const ReviewWriteScreen = () => {
 
   const [ratings, setRatings] = useState({});
   const [comments, setComments] = useState({});
-  const [mainTitle, setMainTitle] = useState(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
+  const [photos, setPhotos] = useState({});
+  const [mainTitle, setMainTitle] = useState('');
   const [isSaveModalVisible, setSaveModalVisible] = useState(false);
+
+  // 뒤로가기나 탭 이동 후 다시 돌아왔을 때 초기화
+  useEffect(() => {
+    setRatings({});
+    setComments({});
+    setPhotos({});
+    setMainTitle(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
+    
+    return () => {
+      setRatings({});
+      setComments({});
+      setPhotos({});
+    };
+  }, [id, selectedRoute?.title]);
 
   const handleSave = () => {
     if (!mainTitle.trim()) {
-      alert('제목을 입력해주세요.');
+      Alert.alert('안내', '제목을 입력해주세요.');
+      return;
+    }
+
+    // 장소 하나라도 별점이 입력되었는지 확인 (유효성 검사)
+    const hasAnyRating = Object.values(ratings).some(rating => rating > 0);
+    if (!hasAnyRating) {
+      Alert.alert('안내', '장소 하나 이상에 꼭 별점을 남겨주세요.');
+      setSaveModalVisible(false);
       return;
     }
 
     const newReview = {
       id: Date.now(),
       title: mainTitle,
-      content: Object.values(comments)[0] || '내용 없음', // 첫 번째 장소 댓글을 대표 내용으로
-      thumbnail: null,
+      content: Object.values(comments)[0] || '내용 없음',
+      thumbnail: Object.values(photos)[0]?.[0] || null, // 첫 사진을 썸네일로
       routeId: id,
       ratings,
       comments,
+      photos,
       date: new Date().toISOString().split('T')[0]
     };
 
     addReview(newReview);
     setSaveModalVisible(false);
-    router.replace('/review'); // 목록으로 이동
+    router.replace('/review');
   };
 
   const handleRating = (placeId, score) => {
@@ -53,6 +78,27 @@ const ReviewWriteScreen = () => {
 
   const handleCommentChange = (placeId, text) => {
     setComments(prev => ({ ...prev, [placeId]: text }));
+  };
+
+  const pickImage = async (placeId) => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert('권한 필요', '사진을 첨부하려면 갤러리 접근 권한이 필요합니다.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setPhotos(prev => ({
+        ...prev,
+        [placeId]: [...(prev[placeId] || []), result.assets[0].uri]
+      }));
+    }
   };
 
   return (
@@ -81,10 +127,11 @@ const ReviewWriteScreen = () => {
         <View style={styles.listContainer}>
           {places.map((item, index) => {
             const isLastItem = index === places.length - 1;
-            const currentRating = ratings[item.id];
+            const placeId = item.id || `place_${index}`;
+            const currentRating = ratings[placeId] || 0;
 
             return (
-              <View key={item.id} style={styles.rowContainer}>
+              <View key={placeId} style={styles.rowContainer}>
                 <View style={styles.timelineLeft}>
                   <View style={styles.timelineLine} />
                 </View>
@@ -95,7 +142,7 @@ const ReviewWriteScreen = () => {
                     <Text style={styles.placeName}>{item.name}</Text>
                     <View style={styles.starContainer}>
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <TouchableOpacity key={star} onPress={() => handleRating(item.id, star)}>
+                        <TouchableOpacity key={star} onPress={() => handleRating(placeId, star)}>
                           <StarIcon 
                             size={18} 
                             isFilled={star <= currentRating} 
@@ -113,12 +160,21 @@ const ReviewWriteScreen = () => {
                       placeholder="내용을 입력하세요"
                       placeholderTextColor="#888"
                       multiline={true}
-                      value={comments[item.id] || ''}
-                      onChangeText={(text) => handleCommentChange(item.id, text)}
+                      value={comments[placeId] || ''}
+                      onChangeText={(text) => handleCommentChange(placeId, text)}
                     />
                   </View>
 
-                  <TouchableOpacity style={styles.addImageBtn} activeOpacity={0.7}>
+                  {/* 첨부된 사진 렌더링 */}
+                  {photos[placeId] && photos[placeId].length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+                      {photos[placeId].map((uri, idx) => (
+                        <Image key={idx} source={{ uri }} style={styles.attachedPhoto} />
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  <TouchableOpacity style={styles.addImageBtn} activeOpacity={0.7} onPress={() => pickImage(placeId)}>
                     <Text style={styles.addImageText}>+</Text>
                   </TouchableOpacity>
 
@@ -198,6 +254,9 @@ const styles = StyleSheet.create({
     borderColor: '#DCE5B6'
   },
   reviewInput: { fontSize: 14, color: '#333', textAlignVertical: 'top', height: '100%' },
+
+  photoScroll: { flexDirection: 'row', marginBottom: 12 },
+  attachedPhoto: { width: 60, height: 60, borderRadius: 8, marginRight: 8, backgroundColor: '#EEE' },
 
   addImageBtn: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: '#A0AAB5', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', marginBottom: 12 },
   addImageText: { fontSize: 32, color: '#888', fontWeight: '300' },

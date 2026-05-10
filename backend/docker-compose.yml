@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:latest
+    image: postgres:15
     container_name: GONYADI  # 컨테이너 이름
     environment:
       POSTGRES_USER: ${DB_USER}    # DB 접속 아이디

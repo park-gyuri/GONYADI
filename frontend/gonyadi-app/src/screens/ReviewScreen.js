@@ -8,7 +8,7 @@ import PencilIcon from '../components/icons/pencilIcon';
 import HeartIcon from '../components/icons/heartIcon';
 
 // 가짜 데이터 가져오기 (삿포로, 오사카, 대구, 부산)
-import { mockRouteResultSapporo, mockRouteResultOsaka, mockRouteResultDaegu, mockRouteResultBusan } from '../data/dummyData';
+import { mockRouteResultSapporo, mockRouteResultOsaka, mockRouteResultDaegu, mockRouteResultBusan, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
 import { useRoutes } from '../context/RouteContext';
 
 const ReviewScreen = () => {
@@ -25,8 +25,16 @@ const ReviewScreen = () => {
     }));
   };
 
-  // 🌟 실제 작성된 데이터만 표시 (더미 데이터 삭제)
+  // 🌟 가짜 데이터와 실제 리뷰 데이터를 합쳐서 보여줍니다.
   const rawData = [
+    mockRouteResultSapporo,
+    mockRouteResultOsaka,
+    mockRouteResultDaegu,
+    mockRouteResultBusan,
+    mockRouteResultDaejeon,
+    mockRouteResultMungyeong,
+    mockRouteResultJeju,
+    mockRouteResultPhuQuoc,
     ...reviews.map(r => ({
       id: r.id,
       reviewSection: { mainTitle: r.title, allReviews: [{ comment: r.content }] },

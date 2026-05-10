@@ -583,11 +583,10 @@ const RouteResultScreen = () => {
 
         </Animated.View>
 
-      {/* 기존 저장 모달 및 폴더 생성 모달 유지 */}
       <Modal
         animationType="fade"
         transparent={true}
-        visible={isSaveModalVisible}
+        visible={isSaveModalVisible && !isFolderCreateVisible}
         onRequestClose={() => setSaveModalVisible(false)}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSaveModalVisible(false)}>

@@ -14,12 +14,21 @@ const ReviewSelectScreen = () => {
   const [activeTab, setActiveTab] = useState('국내');
 
   // 🌟 2. 전역 Context에서 데이터 가져오기!!
-  const { folders, allRoutes, toggleFavorite } = useRoutes();
+  const { folders, allRoutes, toggleFavorite, reviews } = useRoutes();
 
-  // 🌟 3. 현재 탭에 맞는 데이터만 필터링 및 즐겨찾기 정렬
+  // 리뷰가 쓰여진 경로 ID 목록 수집
+  const reviewedRouteIds = reviews.map(r => String(r.routeId));
+
+  // 🌟 3. 현재 탭에 맞는 데이터만 필터링 및 정렬 (리뷰 쓴 건 맨 아래, 그 다음 즐겨찾기)
   const filteredRoutes = allRoutes
     .filter(route => route.category === activeTab)
     .sort((a, b) => {
+      const aReviewed = reviewedRouteIds.includes(String(a.id));
+      const bReviewed = reviewedRouteIds.includes(String(b.id));
+      
+      if (aReviewed && !bReviewed) return 1; // a가 리뷰를 썼으면 뒤로
+      if (!aReviewed && bReviewed) return -1; // b가 리뷰를 썼으면 뒤로
+
       if (a.isFavorite === b.isFavorite) return 0;
       return a.isFavorite ? -1 : 1;
     });
@@ -60,27 +69,40 @@ const ReviewSelectScreen = () => {
       {/* 📍 선택할 경로 리스트 */}
       <ScrollView style={styles.content} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
         {filteredRoutes.length > 0 ? (
-          filteredRoutes.map((route) => (
-            <TouchableOpacity
-              key={route.id}
-              style={styles.routeCard}
-              onPress={() => router.push({ pathname: '/review-write', params: { id: route.id } })} // 누르면 후기 작성 화면으로!
-            >
-              <View style={styles.iconBox}>
-                <FileIcon width={24} height={24} />
-              </View>
-              <View style={styles.routeInfo}>
-                <Text style={styles.routeTitle}>{route.title}</Text>
-                <View style={styles.routeDetailsRow}>
-                  <GrayMarkerIcon width={14} height={14} style={{ marginRight: 4 }} />
-                  <Text style={styles.routeDetails}>{route.location} | {route.date}</Text>
+          filteredRoutes.map((route) => {
+            const isReviewed = reviewedRouteIds.includes(String(route.id));
+            
+            return (
+              <TouchableOpacity
+                key={route.id}
+                style={[
+                  styles.routeCard, 
+                  isReviewed && { opacity: 0.5, backgroundColor: '#F0F0F0' } // 후기를 쓴 경우 회색처리
+                ]}
+                onPress={() => {
+                  if (isReviewed) {
+                    Alert.alert('안내', '이미 후기를 작성한 경로입니다.');
+                  } else {
+                    router.push({ pathname: '/review-write', params: { id: route.id } });
+                  }
+                }}
+              >
+                <View style={styles.iconBox}>
+                  <FileIcon width={24} height={24} />
                 </View>
-              </View>
-              <TouchableOpacity style={styles.favoriteBtn} onPress={() => toggleFavorite(route.id)}>
-                <StarIcon isFilled={route.isFavorite} />
+                <View style={styles.routeInfo}>
+                  <Text style={styles.routeTitle}>{route.title}</Text>
+                  <View style={styles.routeDetailsRow}>
+                    <GrayMarkerIcon width={14} height={14} style={{ marginRight: 4 }} />
+                    <Text style={styles.routeDetails}>{route.location} | {route.date}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.favoriteBtn} onPress={() => toggleFavorite(route.id)}>
+                  <StarIcon isFilled={route.isFavorite} />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
-          ))
+            );
+          })
         ) : (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>저장된 경로가 없습니다.</Text>

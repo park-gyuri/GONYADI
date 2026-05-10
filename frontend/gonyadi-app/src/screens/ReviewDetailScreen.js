@@ -7,6 +7,8 @@ import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import { useRoutes } from '../context/RouteContext';
 
+import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
+
 const ReviewDetailScreen = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -17,7 +19,20 @@ const ReviewDetailScreen = () => {
 
   useEffect(() => {
     if (id) {
-      // 1. 작성된 리뷰 목록에서 찾기
+      // 🌟 1. 먼저 가짜 데이터(더미)에서 찾아보기
+      const allMockData = [
+        mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong,
+        mockRouteResultJeju, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultPhuQuoc
+      ];
+      
+      const foundMock = allMockData.find(mock => String(mock.id) === String(id));
+      
+      if (foundMock) {
+        setRouteData(foundMock);
+        return;
+      }
+
+      // 2. 가짜 데이터가 없으면 작성된 리뷰 목록에서 찾기
       const foundReview = reviews.find(r => String(r.id) === String(id));
       
       if (foundReview) {
@@ -25,16 +40,21 @@ const ReviewDetailScreen = () => {
         const foundRoute = allRoutes.find(r => String(r.id) === String(foundReview.routeId));
         
         // 상세 화면 렌더링을 위한 데이터 조합
+        const allPlaces = foundRoute?.recommendation_data?.schedule?.flatMap(s => s.places) || foundRoute?.recommendation_data?.places || [];
+        
         setRouteData({
           ...foundRoute,
           reviewSection: {
             mainTitle: foundReview.title,
-            allReviews: Object.entries(foundReview.comments || {}).map(([placeId, comment]) => ({
-              placeId: Number(placeId),
-              comment,
-              rating: foundReview.ratings?.[placeId] || 5,
-              photos: []
-            }))
+            allReviews: allPlaces.map((place, index) => {
+              const placeId = place.id || `place_${index}`;
+              return {
+                placeId: placeId,
+                comment: foundReview.comments?.[placeId] || null,
+                rating: foundReview.ratings?.[placeId] || 0,
+                photos: foundReview.photos?.[placeId] || []
+              };
+            })
           },
           schedule: foundRoute?.recommendation_data?.schedule || []
         });
@@ -81,16 +101,20 @@ const ReviewDetailScreen = () => {
   if (routeData.schedule && routeData.schedule.length > 0) {
     const daySchedule = routeData.schedule.find(s => s.day === selectedDay);
     if (daySchedule) {
-      displayedReviews = daySchedule.places.map(place => {
-        const review = routeData.reviewSection.allReviews?.find(r => r.placeId === place.id);
+      displayedReviews = daySchedule.places.map((place, index) => {
+        const placeId = place.id || `place_${index}`;
+        const review = routeData.reviewSection.allReviews?.find(r => 
+          String(r.placeId) === String(placeId) || 
+          r.placeName === place.name
+        );
         return {
-          placeId: place.id,
+          placeId: placeId,
           placeName: place.name,
           rating: review ? review.rating : 0,
           comment: review ? review.comment : null,
           photos: review ? review.photos : []
         };
-      }).filter(item => item.comment || (item.photos && item.photos.length > 0)); // 리뷰나 사진이 있는 장소만
+      }); // 리뷰나 사진이 없는 장소도 모두 보여주기 위해 filter 제거
     }
   } else {
     displayedReviews = routeData.reviewSection.allReviews || [];
@@ -142,7 +166,7 @@ const ReviewDetailScreen = () => {
                           <MarkerIcon width={24} height={24} color="#111" style={{ marginRight: 8 }} />
                           <Text style={styles.placeName}>{item.placeName}</Text>
                         </View>
-                        {renderStars(item.rating || 5)}
+                        {renderStars(item.rating ?? 0)}
                       </View>
 
                       {item.comment ? (
