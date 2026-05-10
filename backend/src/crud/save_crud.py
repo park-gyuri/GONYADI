@@ -65,4 +65,3 @@ def get_itinerary_by_id(session: Session, itinerary_id: int, user_id: int) -> It
         Itineraries.user_id == user_id
     )
     return session.exec(statement).first()
-

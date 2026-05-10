@@ -21,4 +21,3 @@ class Itineraries(SQLModel, table=True):
     recommendation_data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     
     created_at: datetime = Field(default_factory=datetime.now)
-

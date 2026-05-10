@@ -39,4 +39,3 @@ class ItineraryResponse(BaseModel):
     budget_per_person: Optional[int]
     recommendation_data: Dict[str, Any]
     created_at: datetime
-

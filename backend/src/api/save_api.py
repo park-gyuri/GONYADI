@@ -35,4 +35,3 @@ def get_itinerary_detail(itinerary_id: int, session: Session = Depends(get_sessi
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
     return itinerary
-
