@@ -16,17 +16,16 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
 3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해.
 4. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            response_schema=list[PlaceResult],
-        ),
-    )
-
     try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=list[PlaceResult],
+            ),
+        )
         result = response.parsed
         if not result:
             print("get_gemini_places: 빈 결과 반환됨")
@@ -34,8 +33,7 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
         print(f"추천 장소 {len(result)}개 반환됨: {[p.name for p in result]}")
         return result
     except Exception as e:
-        print(f"get_gemini_places 파싱 에러: {e}")
-        print(f"원본 응답: {response.text}")
+        print(f"get_gemini_places 에러: {e}")
         return []
 
 
@@ -63,20 +61,19 @@ def get_gemini_curated_places(
 4. place_pk, order, reason, duration 필드만 반환해.
 5. order는 1부터 시작하는 방문 순서야."""
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            response_schema=list[CuratedPlaceResult],
-        ),
-    )
-
     try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=list[CuratedPlaceResult],
+            ),
+        )
         curated: list[CuratedPlaceResult] = response.parsed or []
     except Exception as e:
-        print(f"[RAG Gemini] 파싱 에러: {e}\n원본: {response.text}")
+        print(f"[RAG Gemini] 에러: {e}")
         return []
 
     # 후보 풀 인덱스 (place_pk → PlaceCandidate)

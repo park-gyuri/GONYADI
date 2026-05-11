@@ -16,7 +16,9 @@ load_dotenv()
 config = context.config
 
 # DB 접속 정보 변경
-DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@localhost:5432/{os.getenv('DB_NAME')}"
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{DB_HOST}:{DB_PORT}/{os.getenv('DB_NAME')}"
 print(f"DEBUG: 생성된 주소는 -> {DATABASE_URL}")
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 

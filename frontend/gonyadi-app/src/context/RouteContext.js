@@ -6,11 +6,7 @@ import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, moc
 const RouteContext = createContext();
 
 export const RouteProvider = ({ children }) => {
-  // 기본 제공 폴더 (국내, 해외)
-  const [folders, setFolders] = useState([
-    { folder_pk: 1, name: '국내' },
-    { folder_pk: 2, name: '해외' }
-  ]);
+  const [folders, setFolders] = useState([]);
 
   // 저장된 경로 (서버에서 불러오기 전엔 빈 상태)
   const [allRoutes, setAllRoutes] = useState([]);
@@ -27,12 +23,8 @@ export const RouteProvider = ({ children }) => {
           getMyRoutes()
         ]);
         
-        // 서버에서 받아온 폴더가 있으면 기존 더미에 합치기 (중복 제거)
         if (serverFolders && serverFolders.length > 0) {
-          setFolders(prev => {
-            const newFolders = serverFolders.filter(sf => !prev.some(pf => pf.name === sf.name));
-            return [...prev, ...newFolders];
-          });
+          setFolders(serverFolders);
         }
 
         if (serverRoutes && serverRoutes.length > 0) {
