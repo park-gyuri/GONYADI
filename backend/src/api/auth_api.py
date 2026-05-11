@@ -4,6 +4,13 @@ from src.core.database import get_session
 from src.schemas.user_schema import UserCreate, UserLogin
 from src.core.security import verify_password, create_access_token
 import src.crud.user_crud as user_crud
+import random
+from src.models.auth import EmailVerification
+from src.services.email_service import send_verification_email
+from sqlmodel import select
+from datetime import datetime
+from email_validator import validate_email, EmailNotValidError
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -16,7 +23,67 @@ def register(
     if user_crud.get_user_by_email(user_input.user_email, session):
         raise HTTPException(status_code=400, detail="이미 존재하는 이메일입니다.")
 
+    # 인증 여부 확인 (선택 사항: 실제 운영 시에는 여기서 인증 테이블을 조회하여 확인 가능)
+    
     return user_crud.create_user(user_input, session)
+
+
+@router.post("/send-verification")
+def send_verification(email: str, session: Session = Depends(get_session)):
+    # 1. 이메일 형식 검증 (커스텀 메시지)
+    try:
+        # check_deliverability=True로 설정하면 실제 존재하는 도메인인지 체크합니다.
+        validate_email(email, check_deliverability=True)
+    except EmailNotValidError:
+        raise HTTPException(
+            status_code=400, 
+            detail="이메일 형식이 올바르지 않습니다. ex) aaa@bbb.com"
+        )
+
+    # 2. 6자리 난수 생성
+    code = f"{random.randint(100000, 999999)}"
+    
+    # 3. 메일 발송 시도
+    success = send_verification_email(email, code)
+    
+    if not success:
+        # 실제 운영 환경(SMTP 설정 있음)에서 발송 실패한 경우
+        from src.services.email_service import SMTP_USER
+        if SMTP_USER:
+             raise HTTPException(status_code=400, detail="존재하지 않는 이메일이거나 발송에 실패했습니다.")
+        else:
+            # 개발 환경(SMTP 설정 없음)에서는 터미널에 띄워주고 진행 허용
+            print(f"DEBUG: [인증 코드: {code}] (SMTP 설정이 없어 터미널에 출력합니다)")
+
+    # 4. 발송이 성공했거나 개발 환경인 경우에만 DB에 저장
+    verification = EmailVerification(email=email, code=code)
+    session.add(verification)
+    session.commit()
+    
+    return {"message": "인증 코드가 발송되었습니다."}
+
+
+@router.post("/verify-code")
+def verify_code(email: str, code: str, session: Session = Depends(get_session)):
+    statement = select(EmailVerification).where(
+        EmailVerification.email == email,
+        EmailVerification.code == code,
+        EmailVerification.is_used == False,
+        EmailVerification.expire_at > datetime.now()
+    ).order_by(EmailVerification.created_at.desc())
+    
+    verification = session.exec(statement).first()
+    
+    if not verification:
+        raise HTTPException(status_code=400, detail="인증 번호가 틀렸거나 만료되었습니다.")
+    
+    # 인증 성공 처리
+    verification.is_used = True
+    session.add(verification)
+    session.commit()
+    
+    return {"message": "인증에 성공했습니다."}
+
 
 
 # 로그인

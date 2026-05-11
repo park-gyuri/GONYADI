@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.getcwd())
 from dotenv import load_dotenv
-from src.models.user import Users
+from src.models import *
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
