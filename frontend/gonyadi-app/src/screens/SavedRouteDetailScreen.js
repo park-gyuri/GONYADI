@@ -18,6 +18,112 @@ try {
   console.log('[지도] react-native-maps를 불러올 수 없어 대체 UI를 표시합니다.');
 }
 
+// ── 색상 매핑 (ODsay 스펙) ───────────────────────────────────────────────
+const BUS_TYPE_COLORS = {
+  1: '#aa9872', 2: '#5BB025', 3: '#33CC99', 4: '#0068b7',
+  5: '#5BB025', 6: '#f99d1c', 10: '#E60012', 11: '#0068b7',
+  14: '#aa9872', 26: '#E60012',
+};
+const SUBWAY_COLORS = {
+  1: '#0052A4', 2: '#00A84D', 3: '#EF7C1C', 4: '#00A5DE',
+  5: '#996CAC', 6: '#CD7C2F', 7: '#747F00', 8: '#E6186C', 9: '#BDB092',
+};
+
+function getSubPathColor(trafficType, lane) {
+  if (trafficType === 3) return '#888888';
+  if (trafficType === 2) return BUS_TYPE_COLORS[lane?.[0]?.type] ?? '#0068b7';
+  if (trafficType === 1) return SUBWAY_COLORS[lane?.[0]?.subwayCode] ?? '#555555';
+  return '#43B0AB';
+}
+
+const SubPathRow = ({ sub, isLast }) => {
+  const { trafficType, sectionTime, distance, stationCount, startName, endName, way, lane } = sub;
+  if (trafficType === 3) {
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: '#888' }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: '#CCC' }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <Text style={transitStyles.walkText}>🚶 도보 {sectionTime}분{distance ? ` · ${distance}m` : ''}</Text>
+        </View>
+      </View>
+    );
+  }
+  if (trafficType === 2) {
+    const color = getSubPathColor(2, lane);
+    const busLabel = lane?.[0]?.busNo ? `${lane[0].busNo}번` : '버스';
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: color }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: color, opacity: 0.4 }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <View style={[transitStyles.badge, { backgroundColor: color }]}>
+            <Text style={transitStyles.badgeText}>🚌 {busLabel}</Text>
+          </View>
+          <Text style={transitStyles.subPathDetail}>
+            {sectionTime}분{startName && endName ? ` · ${startName} → ${endName}` : ''}{stationCount ? ` (${stationCount}정거장)` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  if (trafficType === 1) {
+    const color = getSubPathColor(1, lane);
+    const lineName = lane?.[0]?.name ?? '지하철';
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: color }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: color, opacity: 0.4 }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <View style={[transitStyles.badge, { backgroundColor: color }]}>
+            <Text style={transitStyles.badgeText}>🚇 {lineName}</Text>
+          </View>
+          <Text style={transitStyles.subPathDetail}>
+            {sectionTime}분{startName && endName ? ` · ${startName} → ${endName}` : ''}{way ? ` (${way})` : ''}{stationCount ? ` · ${stationCount}정거장` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  return null;
+};
+
+const TransitDetailCard = ({ segment }) => {
+  const transitRoute = segment?.routes?.transit;
+  if (!transitRoute) {
+    const mode = segment?.routes ? Object.keys(segment.routes)[0] : null;
+    const route = mode ? segment.routes[mode] : null;
+    if (!route) return null;
+    const label = mode === 'walk' ? '🚶 도보' : mode === 'drive' ? '🚗 자동차' : mode === 'bicycle' ? '🚴 자전거' : mode;
+    return (
+      <View style={transitStyles.simpleRow}>
+        <Text style={transitStyles.simpleText}>{label} {Math.round(route.duration_minutes)}분 · {route.distance_meters}m</Text>
+      </View>
+    );
+  }
+  const { transit_sub_paths = [], transit_payment, transit_total_walk, duration_minutes } = transitRoute;
+  return (
+    <View style={transitStyles.card}>
+      <View style={transitStyles.summaryRow}>
+        <Text style={transitStyles.summaryTime}>🚌 대중교통 {Math.round(duration_minutes)}분</Text>
+        <View style={transitStyles.summaryMeta}>
+          {transit_payment > 0 && <Text style={transitStyles.summaryChip}>{transit_payment.toLocaleString()}원</Text>}
+          {transit_total_walk > 0 && <Text style={transitStyles.summaryChip}>도보 {transit_total_walk}m</Text>}
+        </View>
+      </View>
+      {transit_sub_paths.map((sub, i) => (
+        <SubPathRow key={i} sub={sub} isLast={i === transit_sub_paths.length - 1} />
+      ))}
+    </View>
+  );
+};
+
 import FolderCreateModal from '../components/FolderCreateModal';
 import StarIcon from '../components/icons/starIcon';
 import WastebasketIcon from '../components/icons/wastebasketIcon';
@@ -115,40 +221,34 @@ const SavedRouteDetailScreen = () => {
 
   // daysData 변환 로직
   const processDaysData = (data) => {
+    const routeSegs = data?.route_segments || [];
+
     if (data?.schedule) {
-      // 1. dummyData.js의 schedule 형식이 있는 경우 (Day 1, 2, 3 지원)
       const processed = {};
       data.schedule.forEach(dayInfo => {
-        processed[dayInfo.day] = dayInfo.places.map((place, index) => ({
-          id: place.id || `${dayInfo.day}-${index}`,
-          name: place.name,
-          address: place.address || place.description,
-          transport: place.transport ? `${place.transport.type} ${place.transport.duration}` : null,
-          lat: place.lat || (35.10 + Math.random() * 0.05), // 위치 정보 없으면 랜덤 (데모용)
-          lng: place.lng || (129.04 + Math.random() * 0.05)
-        }));
+        processed[dayInfo.day] = dayInfo.places.map((place, index) => {
+          const segment = routeSegs.find(seg => seg.from_name === place.name) || null;
+          return {
+            id: place.id || `${dayInfo.day}-${index}`,
+            name: place.name,
+            address: place.address || place.description || place.reason,
+            transportSegment: segment,
+            lat: place.lat || (35.10 + Math.random() * 0.05),
+            lng: place.lng || (129.04 + Math.random() * 0.05)
+          };
+        });
       });
       setDaysData(processed);
     } else {
-      // 2. 기존 백엔드 API 형식 (places 단일 리스트)
       const places = data?.places || [];
-      const routeSegments = data?.route_segments || [];
-      
       const processed = {
         1: places.map((place, index) => {
-          const segment = routeSegments.find(seg => seg.from_name === place.name);
-          let transportText = null;
-          if (segment && segment.routes) {
-            const mode = Object.keys(segment.routes)[0];
-            if (mode && segment.routes[mode]) {
-              transportText = `${mode === 'walk' ? '도보' : mode === 'drive' ? '자동차' : mode === 'transit' ? '대중교통' : mode} ${Math.round(segment.routes[mode].duration_minutes)}분 이동`;
-            }
-          }
+          const segment = routeSegs.find(seg => seg.from_name === place.name) || null;
           return {
             id: index + 1,
             name: place.name,
             address: place.reason,
-            transport: transportText,
+            transportSegment: segment,
             lat: place.lat,
             lng: place.lng
           };
@@ -292,14 +392,32 @@ const SavedRouteDetailScreen = () => {
   const activePlaces = daysData[selectedDay] || [];
   const activeNames = new Set(activePlaces.map(p => p.name));
   const routeSegments = apiData?.route_segments || [];
-  const allPolylines = routeSegments.flatMap(seg => {
+  const coloredPolylines = routeSegments.flatMap(seg => {
     if (!seg.routes) return [];
     if (!activeNames.has(seg.from_name) || !activeNames.has(seg.to_name)) return [];
-    const mode = Object.keys(seg.routes)[0];
-    if (mode && seg.routes[mode]?.polyline) {
-      return seg.routes[mode].polyline.map(coord => ({ latitude: coord[0], longitude: coord[1] }));
+
+    const transitRoute = seg.routes?.transit;
+    if (transitRoute?.transit_sub_paths?.length > 0) {
+      return transitRoute.transit_sub_paths
+        .filter(sub => sub.polyline?.length >= 2)
+        .map(sub => ({
+          coords: sub.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
+          color: getSubPathColor(sub.trafficType, sub.lane),
+          isDash: sub.trafficType === 3,
+          width: sub.trafficType === 3 ? 4 : 5,
+        }));
     }
-    return [];
+
+    const mode = Object.keys(seg.routes)[0];
+    const route = mode ? seg.routes[mode] : null;
+    if (!route?.polyline?.length) return [];
+    const modeColor = mode === 'walk' ? '#888888' : mode === 'drive' ? '#E07B39' : mode === 'bicycle' ? '#5BB025' : '#43B0AB';
+    return [{
+      coords: route.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
+      color: modeColor,
+      isDash: mode === 'walk',
+      width: 4,
+    }];
   });
 
   const initialRegion = activePlaces.length > 0 ? {
@@ -329,7 +447,15 @@ const SavedRouteDetailScreen = () => {
                 }}
               />
             ))}
-            {allPolylines.length > 0 && <Polyline coordinates={allPolylines} strokeColor="#43B0AB" strokeWidth={4} />}
+            {coloredPolylines.map((pl, i) => (
+              <Polyline
+                key={`pl-${i}`}
+                coordinates={pl.coords}
+                strokeColor={pl.color}
+                strokeWidth={pl.width}
+                lineDashPattern={pl.isDash ? [6, 4] : undefined}
+              />
+            ))}
           </MapView>
         ) : (
           <View style={styles.mapPlaceholder}><Text>🗺️ 지도 영역</Text></View>
@@ -373,7 +499,11 @@ const SavedRouteDetailScreen = () => {
                     </View>
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}><WastebasketIcon width={20} height={20} color="#A9E2D9" /></TouchableOpacity>
                   </TouchableOpacity>
-                  {place.transport && <View style={styles.transportRow}><Text style={styles.transportText}>{place.transport}</Text></View>}
+                  {place.transportSegment && (
+                    <View style={styles.transportRow}>
+                      <TransitDetailCard segment={place.transportSegment} />
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
@@ -502,3 +632,22 @@ const styles = StyleSheet.create({
 });
 
 export default SavedRouteDetailScreen;
+
+const transitStyles = StyleSheet.create({
+  card: { backgroundColor: '#F7FBFF', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#DDE8F5', marginTop: 4 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  summaryTime: { fontSize: 13, fontWeight: '700', color: '#1A6EB5' },
+  summaryMeta: { flexDirection: 'row', gap: 6 },
+  summaryChip: { fontSize: 11, color: '#555', backgroundColor: '#E8F0FE', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  subPathRow: { flexDirection: 'row', marginBottom: 2 },
+  iconCol: { alignItems: 'center', width: 20, marginRight: 8, paddingTop: 3 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  connector: { width: 2, flex: 1, marginTop: 2, minHeight: 18 },
+  subPathContent: { flex: 1, paddingBottom: 10 },
+  walkText: { fontSize: 12, color: '#777', marginTop: 0 },
+  badge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 2 },
+  badgeText: { fontSize: 12, color: '#FFF', fontWeight: '700' },
+  subPathDetail: { fontSize: 11, color: '#555' },
+  simpleRow: { paddingVertical: 4 },
+  simpleText: { fontSize: 13, color: '#59B5AB', fontWeight: '600' },
+});

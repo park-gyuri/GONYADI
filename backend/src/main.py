@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from src.api import auth_api
 from src.api import recommend_api
 from src.api import save_api
+from src.api import review_api
 
 load_dotenv()
 
@@ -25,3 +26,4 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 app.include_router(auth_api.router, prefix="/api/v1")
 app.include_router(recommend_api.router, prefix="/api/v1")
 app.include_router(save_api.router, prefix="/api/v1")
+app.include_router(review_api.router, prefix="/api/v1")

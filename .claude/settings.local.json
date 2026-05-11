@@ -15,7 +15,13 @@
       "Bash(node -e \"require\\('./src/context/RouteContext'\\)\")",
       "Bash(npx expo *)",
       "Bash(python -c \"import sys, json; d = json.load\\(sys.stdin\\); print\\(json.dumps\\({k: v for k, v in d.items\\(\\) if any\\(x in k.lower\\(\\) for x in ['reanimated', 'worklets', 'maps', 'router', 'gesture', 'safe-area', 'screens']\\)}, indent=2\\)\\)\")",
-      "Bash(ipconfig)"
+      "Bash(ipconfig)",
+      "Bash(python -m alembic upgrade head)",
+      "Bash(python -c \"from src.api import review_api; from src.models.review import Reviews; print\\('Import OK'\\)\")",
+      "Bash(python -m alembic current)",
+      "Bash(python -c ' *)",
+      "Bash(findstr /V \"INFO WARNING DETAIL HINT DEBUG BEGIN ROLLBACK generated pg_catalog current_schema standard\")",
+      "Bash(curl -s --max-time 5 http://localhost:8080/api/v1/itineraries)"
     ]
   }
 }

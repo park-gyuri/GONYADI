@@ -1,10 +1,10 @@
 
-from src.schemas.recommend_schema import PlaceResult, CuratedPlaceResult, PlaceCandidate
+from src.schemas.recommend_schema import PlaceResult, CuratedPlaceResult, PlaceCandidate, DaySchedule
 from google import genai
 from google.genai import types
 import os
 
-def get_gemini_places(prompt: str) -> list[PlaceResult]:
+def get_gemini_places(prompt: str) -> list[DaySchedule]:
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
     system_instruction = """너는 관광 데이터베이스에 기반한 전문 여행 가이드야.
@@ -14,7 +14,9 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
 1. 공식 명칭 사용: 네이버 지도나 구글 지도에서 검색했을 때 바로 나오는 공식 명칭만 사용해.
 2. 구체적 명소 선정: 뭉뚱그린 표현 대신 구체적인 장소명을 추천해.
 3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해.
-4. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
+4. 반드시 프롬프트에 명시된 일수(N일)만큼 day 필드를 나눠서 반환해. (1일차 → day:1, 2일차 → day:2 ...)
+5. 각 일차(day)에 3~5개의 장소를 배정하고, 하루 동선이 자연스럽도록 인접한 장소들을 묶어서 배치해.
+6. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
 
     try:
         response = client.models.generate_content(
@@ -23,14 +25,17 @@ def get_gemini_places(prompt: str) -> list[PlaceResult]:
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=list[PlaceResult],
+                response_schema=list[DaySchedule],
             ),
         )
-        result = response.parsed
+        result: list[DaySchedule] = response.parsed or []
         if not result:
             print("get_gemini_places: 빈 결과 반환됨")
             return []
-        print(f"추천 장소 {len(result)}개 반환됨: {[p.name for p in result]}")
+        total = sum(len(d.places) for d in result)
+        print(f"일차별 추천 완료: {len(result)}일 / 총 {total}개 장소")
+        for d in result:
+            print(f"  {d.day}일차: {[p.name for p in d.places]}")
         return result
     except Exception as e:
         print(f"get_gemini_places 에러: {e}")

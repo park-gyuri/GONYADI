@@ -3,6 +3,9 @@ import os
 sys.path.append(os.getcwd())
 from dotenv import load_dotenv
 from src.models.user import Users
+from src.models.folder import Folders
+from src.models.itinerary import Itineraries
+from src.models.review import Reviews
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool

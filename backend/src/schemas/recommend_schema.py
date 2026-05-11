@@ -197,13 +197,21 @@ class RouteSegment(BaseModel):
     routes:    Dict[str, Optional[RouteDetail]] # 키: 이동수단(walk/drive/...), 값: RouteDetail 또는 None
 
 
+# ── 일차별 일정 스키마 ────────────────────────────────────────────────────
+
+class DaySchedule(BaseModel):
+    day:    int              # 1일차, 2일차, ...
+    places: list[PlaceResult]
+
+
 # ── 프론트 응답 스키마 ───────────────────────────────────────────────────
 
 class RecommendResponse(BaseModel):
     status:         str                 # "completed" - 현재 상태
     prompt_preview: str                 # 실제로 AI에 넘길 프롬프트 (디버그용)
-    places:         list[PlaceResult]   # Gemini가 추천한 장소 리스트
-    route_segments: list[RouteSegment]  # 장소 간 이동 경로 (Google Routes API)
+    schedule:       list[DaySchedule]   # 일차별 장소 (1일차, 2일차 ...)
+    places:         list[PlaceResult]   # 전체 장소 flat 리스트 (하위 호환)
+    route_segments: list[RouteSegment]  # 일차 내 장소 간 이동 경로
     # message:        str  # 프론트 로딩 화면(화면 B)에 보여줄 문구
 
 

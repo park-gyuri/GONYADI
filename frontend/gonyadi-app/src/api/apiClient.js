@@ -25,27 +25,25 @@ function getBaseUrl() {
   const debuggerHost = Constants.expoConfig?.hostUri;
   if (debuggerHost) {
     const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:8000`;
+    return `http://${ip}:8080`;
   }
 
   // 3) 기본값 (웹 브라우저 등)
-  return 'http://localhost:8000';
+  return 'http://localhost:8080';
 }
 
 export const BASE_URL = getBaseUrl();
 console.log(`[apiClient] 백엔드 서버 주소: ${BASE_URL}`);
 
 // 2. 공통 호출 함수 만들기
-export const apiClient = async (endpoint, options = {}) => {
-  // 최종 요청을 보낼 주소
+// timeout: 기본 10초. 경로 추천처럼 오래 걸리는 요청은 호출 시 늘려서 사용
+export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
   const url = `${BASE_URL}${endpoint}`;
 
-  // 기본적으로 데이터를 주고받을 땐 JSON 형식을 쓴다고 알려주는 헤더
   const defaultHeaders = {
     'Content-Type': 'application/json',
   };
 
-  // 요청 옵션 조립 (원래 옵션과 헤더를 합치기)
   const finalOptions = {
     ...options,
     headers: {
@@ -55,11 +53,13 @@ export const apiClient = async (endpoint, options = {}) => {
   };
 
   try {
-    // 디버깅 편의를 위해 요청이 어떻게 나가는지 콘솔에 찍어줍니다. (실 운용 땐 지워도 됨)
     console.log(`[통신 시도] ${finalOptions.method || 'GET'} ${url}`);
 
-    // 실제 요청 보내기
-    const response = await fetch(url, finalOptions);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(url, { ...finalOptions, signal: controller.signal });
+    clearTimeout(timeoutId);
 
     // 서버에서 에러(400, 500 등)를 뱉었을 때 화면단으로 에러 넘기기
     if (!response.ok) {

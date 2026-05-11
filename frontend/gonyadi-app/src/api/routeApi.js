@@ -16,12 +16,13 @@ import { mockApiData } from '../data/dummyData';
  * @returns {Promise<Object>} 백엔드를 거쳐 반환된 Gemini 추천 결과
  */
 export const requestNewRoute = async (formData) => {
-  const endpoint = '/api/v1/recommend'; // 백엔드 라우터 prefix 적용
+  const endpoint = '/api/v1/recommend';
 
+  // 경로 추천은 외부 API를 여러 번 호출해서 오래 걸림 → 90초 타임아웃
   return await apiClient(endpoint, {
     method: 'POST',
     body: JSON.stringify(formData),
-  });
+  }, 90000);
 };
 
 // 서버 IP와 포트 -> 어떻게 맞춰서 연결 테스트를 진행할지 (스마트폰/애뮬레이터 환경 정보 포함)
