@@ -17,6 +17,7 @@ try {
 
 // 🌟 우리가 만든 '폴더 생성 모달' 부품 불러오기!
 import FolderCreateModal from '../components/FolderCreateModal';
+import EmptyRouteState from '../components/EmptyRouteState';
 import { requestNewRoute, saveItinerary } from '../api/routeApi';
 import { useRoutes } from '../context/RouteContext';
 import WastebasketIcon from '../components/icons/wastebasketIcon';
@@ -24,6 +25,161 @@ import MarkerIcon from '../components/icons/markerIcon';
 import SendIcon from '../components/icons/sendIcon';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ── 색상 매핑 (ODsay 스펙) ───────────────────────────────────────────────
+const BUS_TYPE_COLORS = {
+  1: '#aa9872',  // 공항버스
+  2: '#5BB025',  // 마을버스
+  3: '#33CC99',  // 일반/시외
+  4: '#0068b7',  // 간선
+  5: '#5BB025',  // 지선
+  6: '#f99d1c',  // 순환
+  10: '#E60012', // 광역
+  11: '#0068b7', // 인천버스
+  14: '#aa9872', // 관광
+  26: '#E60012', // 급행
+};
+
+const SUBWAY_COLORS = {
+  1: '#0052A4',  // 1호선
+  2: '#00A84D',  // 2호선
+  3: '#EF7C1C',  // 3호선
+  4: '#00A5DE',  // 4호선
+  5: '#996CAC',  // 5호선
+  6: '#CD7C2F',  // 6호선
+  7: '#747F00',  // 7호선
+  8: '#E6186C',  // 8호선
+  9: '#BDB092',  // 9호선
+};
+
+// ── 구간별 색상 유틸 함수 (SubPathRow 카드와 지도 폴리라인 색상을 통일) ──────
+function getSubPathColor(trafficType, lane) {
+  if (trafficType === 3) return '#888888';  // 도보
+  if (trafficType === 2) return BUS_TYPE_COLORS[lane?.[0]?.type] ?? '#0068b7';     // 버스
+  if (trafficType === 1) return SUBWAY_COLORS[lane?.[0]?.subwayCode] ?? '#555555'; // 지하철
+  return '#43B0AB'; // 기본
+}
+
+// ── SubPathRow: 단일 구간 렌더링 ──────────────────────────────────────────
+const SubPathRow = ({ sub, isLast }) => {
+  const { trafficType, sectionTime, distance, stationCount, startName, endName, way, lane } = sub;
+
+  // 도보 구간
+  if (trafficType === 3) {
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: '#888' }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: '#CCC' }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <Text style={transitStyles.walkText}>
+            🚶 도보 {sectionTime}분{distance ? ` · ${distance}m` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // 버스 구간
+  if (trafficType === 2) {
+    const laneInfo = lane?.[0];
+    const color = getSubPathColor(2, lane); // 유틸 함수로 통일
+    const busLabel = laneInfo?.busNo ? `${laneInfo.busNo}번` : '버스';
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: color }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: color, opacity: 0.4 }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <View style={[transitStyles.badge, { backgroundColor: color }]}>
+            <Text style={transitStyles.badgeText}>🚌 {busLabel}</Text>
+          </View>
+          <Text style={transitStyles.subPathDetail}>
+            {sectionTime}분
+            {startName && endName ? ` · ${startName} → ${endName}` : ''}
+            {stationCount ? ` (${stationCount}정거장)` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // 지하철 구간
+  if (trafficType === 1) {
+    const laneInfo = lane?.[0];
+    const color = getSubPathColor(1, lane); // 유틸 함수로 통일
+    const lineName = laneInfo?.name ?? '지하철';
+    return (
+      <View style={transitStyles.subPathRow}>
+        <View style={transitStyles.iconCol}>
+          <View style={[transitStyles.dot, { backgroundColor: color }]} />
+          {!isLast && <View style={[transitStyles.connector, { backgroundColor: color, opacity: 0.4 }]} />}
+        </View>
+        <View style={transitStyles.subPathContent}>
+          <View style={[transitStyles.badge, { backgroundColor: color }]}>
+            <Text style={transitStyles.badgeText}>🚇 {lineName}</Text>
+          </View>
+          <Text style={transitStyles.subPathDetail}>
+            {sectionTime}분
+            {startName && endName ? ` · ${startName} → ${endName}` : ''}
+            {way ? ` (${way})` : ''}
+            {stationCount ? ` · ${stationCount}정거장` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return null;
+};
+
+// ── TransitDetailCard: 대중교통 전체 구간 카드 ───────────────────────────────
+const TransitDetailCard = ({ segment }) => {
+  const transitRoute = segment?.routes?.transit;
+
+  // 대중교통이 없으면 도보/자동차 등 단순 텍스트 표시
+  if (!transitRoute) {
+    const mode = segment?.routes ? Object.keys(segment.routes)[0] : null;
+    const route = mode ? segment.routes[mode] : null;
+    if (!route) return null;
+    const label = mode === 'walk' ? '🚶 도보'
+                : mode === 'drive' ? '🚗 자동차'
+                : mode === 'bicycle' ? '🚴 자전거'
+                : mode;
+    return (
+      <View style={transitStyles.simpleRow}>
+        <Text style={transitStyles.simpleText}>
+          {label} {Math.round(route.duration_minutes)}분 · {route.distance_meters}m
+        </Text>
+      </View>
+    );
+  }
+
+  const { transit_sub_paths = [], transit_payment, transit_total_walk, duration_minutes } = transitRoute;
+
+  return (
+    <View style={transitStyles.card}>
+      {/* 요약 헤더 */}
+      <View style={transitStyles.summaryRow}>
+        <Text style={transitStyles.summaryTime}>🚌 대중교통 {Math.round(duration_minutes)}분</Text>
+        <View style={transitStyles.summaryMeta}>
+          {transit_payment > 0 && (
+            <Text style={transitStyles.summaryChip}>{transit_payment.toLocaleString()}원</Text>
+          )}
+          {transit_total_walk > 0 && (
+            <Text style={transitStyles.summaryChip}>도보 {transit_total_walk}m</Text>
+          )}
+        </View>
+      </View>
+      {/* 구간 리스트 */}
+      {transit_sub_paths.map((sub, i) => (
+        <SubPathRow key={i} sub={sub} isLast={i === transit_sub_paths.length - 1} />
+      ))}
+    </View>
+  );
+};
 
 const RouteResultScreen = () => {
   const router = useRouter();
@@ -37,6 +193,7 @@ const RouteResultScreen = () => {
   // 장소(places)와 이동수단(route_segments) 추출
   const places = apiData?.places || [];
   const routeSegments = apiData?.route_segments || [];
+
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -166,19 +323,13 @@ const RouteResultScreen = () => {
       // 2. 기존 백엔드 API 형식 (places 단일 리스트)
       return {
         1: places.map((place, index) => {
-          const segment = routeSegments.find(seg => seg.from_name === place.name);
-          let transportText = null;
-          if (segment && segment.routes) {
-            const mode = Object.keys(segment.routes)[0];
-            if (mode && segment.routes[mode]) {
-              transportText = `${mode === 'walk' ? '도보' : mode === 'drive' ? '자동차' : mode === 'transit' ? '대중교통' : mode} ${Math.round(segment.routes[mode].duration_minutes)}분 이동`;
-            }
-          }
+          // segment 객체 자체를 저장 → TransitDetailCard에서 subPath까지 접근 가능
+          const segment = routeSegments.find(seg => seg.from_name === place.name) || null;
           return {
             id: index + 1,
             name: place.name,
             address: place.reason,
-            transport: transportText,
+            transportSegment: segment, // 전체 segment 객체 보관
             lat: place.lat,
             lng: place.lng
           };
@@ -223,35 +374,19 @@ const RouteResultScreen = () => {
         const nextPlace = newPlaces[deleteIndex];
 
         if (nextPlace) {
-          // 먼저 백엔드 데이터에서 찾기
-          const newSegment = routeSegments.find(seg => seg.from_name === prevPlace.name && seg.to_name === nextPlace.name);
-          if (newSegment && newSegment.routes) {
-            const mode = Object.keys(newSegment.routes)[0];
-            if (mode && newSegment.routes[mode]) {
-              prevPlace.transport = `${mode === 'walk' ? '도보' : mode === 'drive' ? '자동차' : mode === 'transit' ? '대중교통' : mode} ${Math.round(newSegment.routes[mode].duration_minutes)}분 이동`;
-            } else {
-              // 백엔드에 없으면 좌표로 직접 추정
-              const dist = getDistanceKm(prevPlace.lat, prevPlace.lng, nextPlace.lat, nextPlace.lng);
-              prevPlace.transport = estimateTransport(dist);
-            }
-          } else {
-            // 백엔드에 없으면 좌표로 직접 추정
-            const dist = getDistanceKm(prevPlace.lat, prevPlace.lng, nextPlace.lat, nextPlace.lng);
-            prevPlace.transport = estimateTransport(dist);
-          }
+          // 백엔드 원본 segment에서 새 연결 찾기
+          const newSegment = routeSegments.find(
+            seg => seg.from_name === prevPlace.name && seg.to_name === nextPlace.name
+          );
+          prevPlace.transportSegment = newSegment || null;
         } else {
-          prevPlace.transport = null;
+          prevPlace.transportSegment = null;
         }
       }
 
-      // 첫 번째 장소가 삭제된 경우에도 처리
-      if (deleteIndex === 0 && newPlaces.length > 0) {
-        // 새로운 첫 번째 장소 → 그 이전 transport는 의미 없으므로 유지
-      }
-
-      // 마지막 장소의 transport는 항상 null
+      // 마지막 장소의 transportSegment는 항상 null
       if (newPlaces.length > 0) {
-        newPlaces[newPlaces.length - 1].transport = null;
+        newPlaces[newPlaces.length - 1].transportSegment = null;
       }
 
       return { ...prev, [selectedDay]: [...newPlaces] };
@@ -378,15 +513,48 @@ const RouteResultScreen = () => {
   const activePlaces = daysData[selectedDay] || [];
   const activeNames = new Set(activePlaces.map(p => p.name));
 
-  // Polyline 추출 (삭제된 장소의 구간은 제외)
-  const allPolylines = routeSegments.flatMap(seg => {
-    if (!seg.routes) return [];
+  // ── 구간별 색상 폴리라인 목록 계산 ──────────────────────────────────────────
+  // 각 구간을 { coords, color, isDash, width } 으로 분리하여
+  // 지도에서 구간수만큼 Polyline 컴포넌트를 개별 렌더링함
+  const coloredPolylines = routeSegments.flatMap(seg => {
     if (!activeNames.has(seg.from_name) || !activeNames.has(seg.to_name)) return [];
-    const mode = Object.keys(seg.routes)[0];
-    if (mode && seg.routes[mode] && seg.routes[mode].polyline) {
-      return seg.routes[mode].polyline.map(coord => ({ latitude: coord[0], longitude: coord[1] }));
+
+    const transitRoute = seg.routes?.transit;
+    if (transitRoute?.transit_sub_paths?.length > 0) {
+      // 대중교통: subPath별 분리 색상 (getSubPathColor로 카드와 통일)
+      const pls = transitRoute.transit_sub_paths
+        .filter(sub => {
+          const ok = sub.polyline?.length >= 2;
+          // 디버깅: 도보 구간 좌표 확인
+          if (sub.trafficType === 3) {
+            console.log(`[폴리라인] 도보 구간 coords=${JSON.stringify(sub.polyline)}, 표시=${ok}`);
+          }
+          return ok;
+        })
+        .map(sub => ({
+          coords: sub.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
+          color:  getSubPathColor(sub.trafficType, sub.lane),
+          isDash: sub.trafficType === 3, // 도보 = 점선
+          width:  sub.trafficType === 3 ? 4 : 5, // Android에서 dash 표시를 위해 4 이상
+        }));
+      console.log(`[폴리라인] ${seg.from_name}→${seg.to_name} 대중교통 구간 수: ${pls.length}`);
+      return pls;
     }
-    return [];
+
+    // 도보/자동차/자전거: 단색 방식 (기존 호환)
+    const mode = seg.routes ? Object.keys(seg.routes)[0] : null;
+    const route = mode ? seg.routes[mode] : null;
+    if (!route?.polyline?.length) return [];
+    const modeColor = mode === 'walk'    ? '#888888'
+                    : mode === 'drive'   ? '#E07B39'
+                    : mode === 'bicycle' ? '#5BB025'
+                    : '#43B0AB';
+    return [{
+      coords: route.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
+      color:  modeColor,
+      isDash: mode === 'walk',
+      width:  4,
+    }];
   });
 
   // 지도 초기 중심점
@@ -455,13 +623,16 @@ const RouteResultScreen = () => {
                 onPress={() => handleMarkerPress(place)}
               />
             ))}
-            {allPolylines.length > 0 && (
+            {/* 구간별 색상 폴리라인: 대중교통=호선색, 도보=회색점선, 자동차=주황 */}
+            {coloredPolylines.map((pl, i) => (
               <Polyline
-                coordinates={allPolylines}
-                strokeColor="#43B0AB"
-                strokeWidth={4}
+                key={`pl-${i}`}
+                coordinates={pl.coords}
+                strokeColor={pl.color}
+                strokeWidth={pl.width}
+                lineDashPattern={pl.isDash ? [6, 4] : undefined}
               />
-            )}
+            ))}
           </MapView>
         ) : (
           <View style={{ flex: 1, backgroundColor: '#EAF3FA', alignItems: 'center', justifyContent: 'center' }}>
@@ -528,10 +699,10 @@ const RouteResultScreen = () => {
                     </TouchableOpacity>
                   </TouchableOpacity>
 
-                  {/* 이동 수단 정보 */}
-                  {place.transport && (
+                  {/* 이동 수단 정보 — 대중교통 포함 상세 표시 */}
+                  {place.transportSegment && (
                     <View style={styles.transportRow}>
-                      <Text style={styles.transportText}>{place.transport}</Text>
+                      <TransitDetailCard segment={place.transportSegment} />
                     </View>
                   )}
                 </View>
@@ -679,8 +850,8 @@ const styles = StyleSheet.create({
   placeAddress: { fontSize: 13, color: '#777', marginLeft: 30 },
   deleteBtn: { padding: 5 },
   
-  transportRow: { paddingLeft: 40, paddingVertical: 15 },
-  transportText: { fontSize: 14, color: '#59B5AB', fontWeight: '600' },
+  transportRow: { paddingLeft: 16, paddingVertical: 8 },
+  saveBtn: { backgroundColor: '#59B5AB' },
 
   bottomFixedArea: { backgroundColor: '#FFF', paddingBottom: 20, paddingTop: 10 },
   inputSection: { marginBottom: 20 },
@@ -709,4 +880,100 @@ const styles = StyleSheet.create({
   saveConfirmBtnText: { fontWeight: 'bold' }
 });
 
-export default RouteResultScreen;
+// ── 대중교통 상세 카드 전용 스타일 ────────────────────────────────────────
+const transitStyles = StyleSheet.create({
+  // 대중교통 카드 전체 래퍼
+  card: {
+    backgroundColor: '#F7FBFF',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#DDE8F5',
+    marginTop: 4,
+  },
+  // 요약 헤더 (총 OO분 | 요금 | 도보)
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  summaryTime: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A6EB5',
+  },
+  summaryMeta: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  summaryChip: {
+    fontSize: 11,
+    color: '#555',
+    backgroundColor: '#E8F0FE',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  // 구간 행 (아이콘 + 내용)
+  subPathRow: {
+    flexDirection: 'row',
+    marginBottom: 2,
+  },
+  iconCol: {
+    alignItems: 'center',
+    width: 20,
+    marginRight: 8,
+    paddingTop: 3,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  connector: {
+    width: 2,
+    flex: 1,
+    marginTop: 2,
+    minHeight: 18,
+  },
+  subPathContent: {
+    flex: 1,
+    paddingBottom: 10,
+  },
+  // 도보 텍스트
+  walkText: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 0,
+  },
+  // 버스/지하철 배지
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  badgeText: {
+    fontSize: 12,
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  // 배지 아래 상세 텍스트
+  subPathDetail: {
+    fontSize: 11,
+    color: '#555',
+  },
+  // 대중교통 없을 때 단순 표시
+  simpleRow: {
+    paddingVertical: 4,
+  },
+  simpleText: {
+    fontSize: 13,
+    color: '#59B5AB',
+    fontWeight: '600',
+  },
+});
+
+export default RouteResultScreen;

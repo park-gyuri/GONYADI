@@ -2,28 +2,48 @@
  * apiClient.js
  * 프론트엔드와 백엔드 통신의 기본 뼈대 역할을 하는 파일
  * 백엔드 팀원과 통신 테스트를 진행할 때, 여기 설정들을 맞춰가기
+ *
+ * [서버 주소 설정 방법]
+ * - 기본: Expo Dev Server가 자동으로 PC IP를 감지하여 백엔드에 연결
+ * - 수동: frontend/gonyadi-app/.env 에 EXPO_PUBLIC_API_URL=http://IP:8000 설정
+ * - 배포: .env에 배포 서버 주소 입력 (예: https://api.gonyadi.com)
  */
+import Constants from 'expo-constants';
 
-// 1. 서버 주소 설정
-// 나중에 배포된 서버 주소가 나오면 (예: https://api.gonyadi.com) 여기에 대입
-// BASE_URL이 백엔드 서버 주소. 후에 수정하면 됨
-// 로컬 테스트 중이라면 http://localhost:8080 (iOS) 또는 http://10.0.2.2:8080 (Android) 등을 사용
-import { Platform } from 'react-native';
+/**
+ * 백엔드 BASE_URL을 자동으로 결정한다.
+ * 우선순위: .env 명시값 > Expo 자동 감지 IP > localhost
+ */
+function getBaseUrl() {
+  // 1) .env에 EXPO_PUBLIC_API_URL이 설정된 경우 (수동 지정)
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
 
-// 백엔드 서버 주소 (맥북 실제 IP: 192.168.35.162, 안드로이드 에뮬레이터: 10.0.2.2)
-export const BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://192.168.35.162:8000';
+  // 2) Expo Dev Server에서 자동으로 감지된 호스트 IP 사용
+  //    같은 WiFi에 연결되어 있으면 IP 변경 없이 자동 연결됨
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  if (debuggerHost) {
+    const ip = debuggerHost.split(':')[0];
+    return `http://${ip}:8080`;
+  }
+
+  // 3) 기본값 (웹 브라우저 등)
+  return 'http://localhost:8080';
+}
+
+export const BASE_URL = getBaseUrl();
+console.log(`[apiClient] 백엔드 서버 주소: ${BASE_URL}`);
 
 // 2. 공통 호출 함수 만들기
-export const apiClient = async (endpoint, options = {}) => {
-  // 최종 요청을 보낼 주소
+// timeout: 기본 10초. 경로 추천처럼 오래 걸리는 요청은 호출 시 늘려서 사용
+export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
   const url = `${BASE_URL}${endpoint}`;
 
-  // 기본적으로 데이터를 주고받을 땐 JSON 형식을 쓴다고 알려주는 헤더
   const defaultHeaders = {
     'Content-Type': 'application/json',
   };
 
-  // 요청 옵션 조립 (원래 옵션과 헤더를 합치기)
   const finalOptions = {
     ...options,
     headers: {
@@ -33,11 +53,13 @@ export const apiClient = async (endpoint, options = {}) => {
   };
 
   try {
-    // 디버깅 편의를 위해 요청이 어떻게 나가는지 콘솔에 찍어줍니다. (실 운용 땐 지워도 됨)
     console.log(`[통신 시도] ${finalOptions.method || 'GET'} ${url}`);
 
-    // 실제 요청 보내기
-    const response = await fetch(url, finalOptions);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(url, { ...finalOptions, signal: controller.signal });
+    clearTimeout(timeoutId);
 
     // 서버에서 에러(400, 500 등)를 뱉었을 때 화면단으로 에러 넘기기
     if (!response.ok) {

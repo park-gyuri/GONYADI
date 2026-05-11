@@ -112,6 +112,7 @@ def build_hybrid_prompt(req: RecommendRequest) -> str:
 {refined_request}
 
 위 조건을 모두 반영하여 {req.days}일 일정에 맞는 장소를 추천해 주세요.
+반드시 1일차부터 {req.days}일차까지 day 필드로 구분하여 각 일차에 3~5개 장소를 배정하세요.
 필수 조건이 있다면 반드시 지키고, 상세 요청을 최우선으로 반영해 주세요.
 """.strip()
 

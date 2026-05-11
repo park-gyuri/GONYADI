@@ -28,6 +28,7 @@ class ItineraryCreate(BaseModel):
 class ItineraryResponse(BaseModel):
     itinerary_pk: int
     folder_id: Optional[int]
+    folder_name: Optional[str] = None
     user_id: int
     title: str
     region: str

@@ -1,84 +1,150 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import { useRoutes } from '../context/RouteContext';
+import { fetchReviewById } from '../api/reviewApi';
 
 import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
 
+const ALL_MOCK_DATA = [
+  mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong,
+  mockRouteResultJeju, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultPhuQuoc,
+];
+
 const ReviewDetailScreen = () => {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, type } = useLocalSearchParams();
   const [selectedImage, setSelectedImage] = useState(null);
   const [routeData, setRouteData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
   const { reviews, allRoutes } = useRoutes();
 
   useEffect(() => {
-    if (id) {
-      // 🌟 1. 먼저 가짜 데이터(더미)에서 찾아보기
-      const allMockData = [
-        mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong,
-        mockRouteResultJeju, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultPhuQuoc
-      ];
-      
-      const foundMock = allMockData.find(mock => String(mock.id) === String(id));
-      
-      if (foundMock) {
-        setRouteData(foundMock);
-        return;
-      }
+    if (!id) { setIsLoading(false); return; }
 
-      // 2. 가짜 데이터가 없으면 작성된 리뷰 목록에서 찾기
-      const foundReview = reviews.find(r => String(r.id) === String(id));
-      
-      if (foundReview) {
-        // 리뷰가 연결된 원본 경로 정보 찾기
-        const foundRoute = allRoutes.find(r => String(r.id) === String(foundReview.routeId));
-        
-        // 상세 화면 렌더링을 위한 데이터 조합
-        const allPlaces = foundRoute?.recommendation_data?.schedule?.flatMap(s => s.places) || foundRoute?.recommendation_data?.places || [];
-        
-        setRouteData({
-          ...foundRoute,
-          reviewSection: {
-            mainTitle: foundReview.title,
-            allReviews: allPlaces.map((place, index) => {
-              const placeId = place.id || `place_${index}`;
-              return {
-                placeId: placeId,
-                comment: foundReview.comments?.[placeId] || null,
-                rating: foundReview.ratings?.[placeId] || 0,
-                photos: foundReview.photos?.[placeId] || []
-              };
-            })
-          },
-          schedule: foundRoute?.recommendation_data?.schedule || []
-        });
-      }
-    }
-  }, [id, reviews, allRoutes]);
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        if (type === 'db') {
+          const dbReview = await fetchReviewById(id);
+          if (dbReview) {
+            const recData = dbReview.recommendation_data || {};
+            const totalDays = dbReview.days || 1;
 
-  const renderStars = (rating) => {
+            let finalSchedule = [];
+
+            if (recData.schedule && recData.schedule.length > 0) {
+              // schedule 형식: 이미 일차별로 분리되어 있음
+              let globalIndex = 0;
+              finalSchedule = recData.schedule.map(dayData => ({
+                day: dayData.day,
+                places: dayData.places.map(p => ({ ...p, _gi: globalIndex++ })),
+              }));
+            } else if (recData.places && recData.places.length > 0) {
+              // flat places 형식: days 값으로 일차별 균등 분배
+              const flatPlaces = recData.places;
+              const perDay = Math.ceil(flatPlaces.length / totalDays);
+              for (let day = 1; day <= totalDays; day++) {
+                const start = (day - 1) * perDay;
+                const end = Math.min(start + perDay, flatPlaces.length);
+                if (start < flatPlaces.length) {
+                  finalSchedule.push({
+                    day,
+                    places: flatPlaces.slice(start, end).map((p, i) => ({ ...p, _gi: start + i })),
+                  });
+                }
+              }
+            }
+
+            const allReviews = finalSchedule.flatMap(d =>
+              d.places.map(place => {
+                const placeId = place.id || `place_${place._gi}`;
+                return {
+                  placeId,
+                  placeName: place.name,
+                  rating: dbReview.ratings?.[placeId] || 0,
+                  comment: dbReview.comments?.[placeId] || null,
+                  photos: dbReview.photos?.[placeId] || [],
+                };
+              })
+            );
+
+            setRouteData({
+              reviewSection: { mainTitle: dbReview.title, allReviews },
+              schedule: finalSchedule,
+            });
+          }
+          return;
+        }
+
+        // 더미 데이터에서 찾기
+        const foundMock = ALL_MOCK_DATA.find(mock => String(mock.id) === String(id));
+        if (foundMock) {
+          setRouteData(foundMock);
+          return;
+        }
+
+        // 로컬 리뷰에서 찾기 (RouteContext)
+        const foundReview = reviews.find(r => String(r.id) === String(id));
+        if (foundReview) {
+          const foundRoute = allRoutes.find(r => String(r.id) === String(foundReview.routeId));
+          const allPlaces = foundRoute?.recommendation_data?.schedule?.flatMap(s => s.places)
+            || foundRoute?.recommendation_data?.places || [];
+          setRouteData({
+            ...foundRoute,
+            reviewSection: {
+              mainTitle: foundReview.title,
+              allReviews: allPlaces.map((place, index) => {
+                const placeId = place.id || `place_${index}`;
+                return {
+                  placeId,
+                  comment: foundReview.comments?.[placeId] || null,
+                  rating: foundReview.ratings?.[placeId] || 0,
+                  photos: foundReview.photos?.[placeId] || [],
+                };
+              }),
+            },
+            schedule: foundRoute?.recommendation_data?.schedule || [],
+          });
+        }
+      } catch (e) {
+        console.error('[ReviewDetail] 불러오기 실패:', e.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    load();
+  }, [id, type, reviews, allRoutes]);
+
+  const renderStars = (rating) => (
+    <View style={styles.starContainer}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <StarIcon key={star} size={18} isFilled={star <= rating} color="#43B0AB" style={{ marginRight: 2 }} />
+      ))}
+    </View>
+  );
+
+  if (isLoading) {
     return (
-      <View style={styles.starContainer}>
-        {[1, 2, 3, 4, 5].map((star) => (
-          <StarIcon
-            key={star}
-            size={18}
-            isFilled={star <= rating}
-            color="#43B0AB"
-            style={{ marginRight: 2 }}
-          />
-        ))}
-      </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.push('/review')} style={styles.backButton}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#43B0AB" />
+        </View>
+      </SafeAreaView>
     );
-  };
+  }
 
-  // 데이터가 로드되기 전이나 매칭되는 데이터가 없을 때
   if (!routeData || !routeData.reviewSection) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -94,27 +160,30 @@ const ReviewDetailScreen = () => {
     );
   }
 
-  const reviewTitle = routeData.reviewSection.mainTitle || "리뷰 상세";
+  const reviewTitle = routeData.reviewSection.mainTitle || '리뷰 상세';
   const scheduleDays = routeData.schedule ? routeData.schedule.map(s => s.day) : [];
+
+  // selectedDay 가 현재 schedule에 없으면 첫 번째 day로 보정
+  const effectiveDay = scheduleDays.includes(selectedDay) ? selectedDay : (scheduleDays[0] ?? 1);
 
   let displayedReviews = [];
   if (routeData.schedule && routeData.schedule.length > 0) {
-    const daySchedule = routeData.schedule.find(s => s.day === selectedDay);
+    const daySchedule = routeData.schedule.find(s => s.day === effectiveDay);
     if (daySchedule) {
       displayedReviews = daySchedule.places.map((place, index) => {
-        const placeId = place.id || `place_${index}`;
-        const review = routeData.reviewSection.allReviews?.find(r => 
-          String(r.placeId) === String(placeId) || 
-          r.placeName === place.name
+        // _gi: flat places 형식에서 분배된 전역 인덱스, 없으면 로컬 index
+        const placeId = place.id || `place_${place._gi ?? index}`;
+        const review = routeData.reviewSection.allReviews?.find(r =>
+          String(r.placeId) === String(placeId) || r.placeName === place.name
         );
         return {
-          placeId: placeId,
+          placeId,
           placeName: place.name,
-          rating: review ? review.rating : 0,
-          comment: review ? review.comment : null,
-          photos: review ? review.photos : []
+          rating: review?.rating ?? 0,
+          comment: review?.comment ?? null,
+          photos: review?.photos ?? [],
         };
-      }); // 리뷰나 사진이 없는 장소도 모두 보여주기 위해 filter 제거
+      });
     }
   } else {
     displayedReviews = routeData.reviewSection.allReviews || [];
@@ -122,7 +191,6 @@ const ReviewDetailScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* 🔙 헤더 영역 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push('/review')} style={styles.backButton}>
           <Text style={styles.backIcon}>←</Text>
@@ -130,23 +198,19 @@ const ReviewDetailScreen = () => {
       </View>
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {/* 🏷️ 후기 제목 (본문 최상단) */}
         <View style={styles.titleWrapper}>
-          <Text style={styles.routeTitle}>
-            {reviewTitle}
-          </Text>
+          <Text style={styles.routeTitle}>{reviewTitle}</Text>
         </View>
 
-        {/* 📅 일차 선택 탭 (다중 일차인 경우에만 표시) */}
-        {scheduleDays.length > 1 && (
+        {scheduleDays.length > 0 && (
           <View style={styles.dayTabRow}>
             {scheduleDays.map((day) => (
               <TouchableOpacity
                 key={day}
-                style={[styles.dayTab, selectedDay === day && styles.dayTabActive]}
+                style={[styles.dayTab, effectiveDay === day && styles.dayTabActive]}
                 onPress={() => setSelectedDay(day)}
               >
-                <Text style={[styles.dayTabText, selectedDay === day && styles.dayTabTextActive]}>{day}일차</Text>
+                <Text style={[styles.dayTabText, effectiveDay === day && styles.dayTabTextActive]}>{day}일차</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -154,44 +218,40 @@ const ReviewDetailScreen = () => {
 
         <View style={styles.timelineContainer}>
           <View style={styles.mainVerticalLine} />
-
           <View style={{ flex: 1 }}>
             {displayedReviews.length > 0 ? (
-              displayedReviews.map((item, index) => {
-                return (
-                  <View key={item.placeId || index} style={styles.placeItemWrapper}>
-                    <View style={styles.placeCard}>
-                      <View style={styles.placeHeader}>
-                        <View style={styles.placeNameRow}>
-                          <MarkerIcon width={24} height={24} color="#111" style={{ marginRight: 8 }} />
-                          <Text style={styles.placeName}>{item.placeName}</Text>
-                        </View>
-                        {renderStars(item.rating ?? 0)}
+              displayedReviews.map((item, index) => (
+                <View key={item.placeId || index} style={styles.placeItemWrapper}>
+                  <View style={styles.placeCard}>
+                    <View style={styles.placeHeader}>
+                      <View style={styles.placeNameRow}>
+                        <MarkerIcon width={24} height={24} color="#111" style={{ marginRight: 8 }} />
+                        <Text style={styles.placeName}>{item.placeName}</Text>
                       </View>
-
-                      {item.comment ? (
-                        <View style={styles.reviewTextBox}>
-                          <Text style={styles.reviewText}>{item.comment}</Text>
-                        </View>
-                      ) : null}
-
-                      {item.photos && item.photos.length > 0 ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-                          {item.photos.map((imgUrl, imgIndex) => (
-                            <TouchableOpacity
-                              key={imgIndex}
-                              activeOpacity={0.8}
-                              onPress={() => setSelectedImage(imgUrl)}
-                            >
-                              <Image source={typeof imgUrl === 'string' ? { uri: imgUrl } : imgUrl} style={styles.thumbnailImage} />
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      ) : null}
+                      {renderStars(item.rating ?? 0)}
                     </View>
+
+                    {item.comment ? (
+                      <View style={styles.reviewTextBox}>
+                        <Text style={styles.reviewText}>{item.comment}</Text>
+                      </View>
+                    ) : null}
+
+                    {item.photos && item.photos.length > 0 ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+                        {item.photos.map((imgUrl, imgIndex) => (
+                          <TouchableOpacity key={imgIndex} activeOpacity={0.8} onPress={() => setSelectedImage(imgUrl)}>
+                            <Image
+                              source={typeof imgUrl === 'string' ? { uri: imgUrl } : imgUrl}
+                              style={styles.thumbnailImage}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    ) : null}
                   </View>
-                );
-              })
+                </View>
+              ))
             ) : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text style={{ color: '#888' }}>해당 일차에는 작성된 후기가 없습니다.</Text>
@@ -202,12 +262,7 @@ const ReviewDetailScreen = () => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <Modal
-        visible={selectedImage !== null}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setSelectedImage(null)}
-      >
+      <Modal visible={selectedImage !== null} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSelectedImage(null)}>
           {selectedImage ? (
             <Image
@@ -242,26 +297,21 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 15,
     marginBottom: 25,
-    marginTop: 10
+    marginTop: 10,
   },
   routeTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', textAlign: 'center' },
-
   listContainer: { paddingHorizontal: 20 },
 
-  // 📅 일차 선택 탭 스타일
   dayTabRow: { flexDirection: 'row', marginBottom: 20 },
   dayTab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#DDD', marginRight: 10 },
   dayTabActive: { backgroundColor: '#FFFFFF', borderColor: '#DDD' },
   dayTabText: { fontSize: 14, color: '#999' },
   dayTabTextActive: { color: '#000', fontWeight: 'bold' },
 
-  // 📏 전체를 관통하는 수직 타임라인 선
   timelineContainer: { flexDirection: 'row', position: 'relative' },
   mainVerticalLine: { position: 'absolute', left: 20, top: 35, bottom: 50, width: 2, backgroundColor: '#C4CCD8', zIndex: -1 },
 
   placeItemWrapper: { marginBottom: 20 },
-
-  // 프리미엄 장소 카드 (하나의 박스)
   placeCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 25,
@@ -270,9 +320,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 4
+    elevation: 4,
   },
-
   placeHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, gap: 8 },
   placeNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: 8 },
   placeName: { fontSize: 20, fontWeight: 'bold', color: '#111', flexShrink: 1 },
@@ -284,7 +333,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#DCE5B6'
+    borderColor: '#DCE5B6',
   },
   reviewText: { fontSize: 14, color: '#333', lineHeight: 22 },
 

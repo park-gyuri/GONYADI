@@ -55,6 +55,9 @@ const RecommendInputScreen = () => {
   // 로딩 상태 추가
   const [isLoading, setIsLoading] = useState(false);
 
+  // 추가 요청사항
+  const [userMessage, setUserMessage] = useState('');
+
   // 제출 버튼 클릭 시 유효성 검사 로직
   const handleSubmit = async () => {
     let hasError = false;
@@ -110,7 +113,7 @@ const RecommendInputScreen = () => {
         transports: validTransports.length > 0 ? validTransports : ['도보'],
         themes: validThemes.length > 0 ? validThemes : ['힐링'],
         conditions: validConditions,
-        user_message: "추가 요청사항",
+        user_message: userMessage.trim(),
       };
 
       console.log('API Request Payload:', formData);
@@ -450,7 +453,13 @@ const RecommendInputScreen = () => {
                   <Text style={styles.tagPlusText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TextInput style={styles.textArea} multiline placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어." />
+              <TextInput
+                style={styles.textArea}
+                multiline
+                placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어."
+                value={userMessage}
+                onChangeText={setUserMessage}
+              />
             </View>
 
             {/* 하단 경고 문구 표시: 태그 개수 검증 에러 */}
