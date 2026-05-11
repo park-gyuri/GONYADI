@@ -142,13 +142,52 @@ class RecommendRequest(BaseModel):
 
 # ── Google Routes API 경로 정보 스키마 ────────────────────────────────────
 
+
+class LaneInfo(BaseModel):
+    """ODsay 대중교통 차선(노선) 정보"""
+    # 버스 관련
+    busNo:      Optional[str] = None   # 버스 번호 (예: "472")
+    type:       Optional[int] = None   # 버스 종류 코드 (4=간선, 5=지선, 10=광역 등)
+    # 지하철 관련
+    name:       Optional[str] = None   # 호선명 (예: "수도권 2호선")
+    subwayCode: Optional[int] = None   # 지하철 색상 코드 (1~9)
+
+
+class SubPathDetail(BaseModel):
+    """ODsay 대중교통 세부 구간 (subPath 하나)"""
+    trafficType:  int                    # 1=지하철, 2=버스, 3=도보
+    sectionTime:  int                    # 구간 소요 시간 (분)
+    distance:     Optional[int]   = None # 이동 거리 (m) — 도보 구간에서 주로 사용
+    stationCount: Optional[int]   = None # 정거장 수 (지하철/버스)
+    startName:    Optional[str]   = None # 출발 정류장/역명
+    endName:      Optional[str]   = None # 도착 정류장/역명
+    way:          Optional[str]   = None # 지하철 방면 (예: "잠실 방면")
+    lane:         List[LaneInfo]  = []   # 노선 정보 목록
+    # 지도 렌더링용 구간 좌표 (trafficType별로 채워지는 방식이 다름)
+    # - 지하철/버스: passStopList.stations 좌표 (현재 방식)
+    # - 추후 loadLane API로 교체 시 _build_subpath_polyline()만 수정하면 됨
+    polyline:     List[List[float]] = [] # [[lat, lng], ...] 이 구간의 지도 좌표
+    # 도보 구간 시작/끝 좌표 (직선 연결용)
+    startX:       Optional[float] = None # 출발 경도
+    startY:       Optional[float] = None # 출발 위도
+    endX:         Optional[float] = None # 도착 경도
+    endY:         Optional[float] = None # 도착 위도
+
+
 class RouteDetail(BaseModel):
     """단일 이동 수단의 경로 세부 정보"""
-    travel_mode:      str                   # "walk" | "drive"
+    travel_mode:      str                   # "walk" | "drive" | "transit" | "bicycle"
     duration_seconds: int                   # 소요 시간 (초)
     duration_minutes: float                 # 소요 시간 (분)
     distance_meters:  int                   # 이동 거리 (미터)
-    polyline:         list[list[float]] = []  # [[lat, lng], ...] 폴리라인 좌표 (TMAP 반환값)
+    polyline:         list[list[float]] = []  # [[lat, lng], ...] 폴리라인 좌표
+    # 대중교통 전용 상세 정보 (transit 모드일 때만 채워짐)
+    transit_sub_paths:  List[SubPathDetail] = []  # 구간별 상세 (도보/버스/지하철 분리)
+    transit_total_walk: Optional[int]       = None # 총 도보 거리 (m)
+    transit_payment:    Optional[int]       = None # 요금 (원)
+    # 폴백 상태 표시 ("success" | "walking_fallback" | None)
+    transit_status:     Optional[str]       = None
+    transit_message:    Optional[str]       = None # 프론트 배너에 표시할 메시지
 
 
 class RouteSegment(BaseModel):
