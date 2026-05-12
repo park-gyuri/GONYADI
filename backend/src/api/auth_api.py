@@ -42,6 +42,7 @@ def send_verification(email: str, session: Session = Depends(get_session)):
 
     # 2. 6자리 난수 생성
     code = f"{random.randint(100000, 999999)}"
+    print(f"DEBUG: 생성된 인증 코드: {code} (대상: {email})")
     
     # 3. 메일 발송 시도
     success = send_verification_email(email, code)
@@ -56,9 +57,15 @@ def send_verification(email: str, session: Session = Depends(get_session)):
             print(f"DEBUG: [인증 코드: {code}] (SMTP 설정이 없어 터미널에 출력합니다)")
 
     # 4. 발송이 성공했거나 개발 환경인 경우에만 DB에 저장
-    verification = EmailVerification(email=email, code=code)
-    session.add(verification)
-    session.commit()
+    try:
+        verification = EmailVerification(email=email, code=code)
+        session.add(verification)
+        session.commit()
+        print("DEBUG: DB 저장 완료!")
+    except Exception as db_err:
+        print(f"[ERROR] DB 저장 중 에러 발생: {db_err}")
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"DB 에러: {str(db_err)}")
     
     return {"message": "인증 코드가 발송되었습니다."}
 

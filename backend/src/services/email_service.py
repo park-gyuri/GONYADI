@@ -14,7 +14,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 def send_verification_email(to_email: str, code: str):
     """실제 이메일을 발송하는 함수"""
     if not SMTP_USER or not SMTP_PASSWORD:
-        print(f"⚠️ SMTP 설정이 없습니다. [인증 코드: {code}] 이메일 발송을 건너뜁니다.")
+        print(f"[WARNING] SMTP 설정이 없습니다. [인증 코드: {code}] 이메일 발송을 건너뜁니다.")
         return False
 
     try:
@@ -40,5 +40,5 @@ def send_verification_email(to_email: str, code: str):
         server.quit()
         return True
     except Exception as e:
-        print(f"❌ 이메일 발송 실패: {e}")
+        print(f"[ERROR] 이메일 발송 실패: {e}")
         return False
