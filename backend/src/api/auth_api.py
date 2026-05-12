@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
 from src.schemas.user_schema import UserCreate, UserLogin
-from src.core.security import verify_password, create_access_token
+from src.core.security import verify_password, create_access_token, create_refresh_token, verify_access_token
 import src.crud.user_crud as user_crud
 import random
 from src.models.auth import EmailVerification
@@ -123,12 +123,35 @@ def login(
     if not verify_password(user_input.user_password, user.user_password):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
 
-    # 3. JWT 토큰 발급
+    # 3. JWT 토큰 발급 (Access & Refresh)
     access_token = create_access_token(data={"sub": str(user.user_pk)})
+    refresh_token = create_refresh_token(data={"sub": str(user.user_pk)})
 
     return {
         "message": "로그인에 성공했습니다.",
         "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
+
+@router.post("/refresh")
+def refresh_token(refresh_token: str, session: Session = Depends(get_session)):
+    """Refresh Token을 이용해 새로운 Access Token을 발급합니다."""
+    # 1. Refresh Token 검증
+    payload = verify_access_token(refresh_token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 갱신 토큰입니다.")
+    
+    user_pk = payload.get("sub")
+    if not user_pk:
+        raise HTTPException(status_code=401, detail="토큰 정보가 올바르지 않습니다.")
+        
+    # 2. 새로운 Access Token 발급
+    new_access_token = create_access_token(data={"sub": user_pk})
+    
+    return {
+        "access_token": new_access_token,
         "token_type": "bearer"
     }
 
