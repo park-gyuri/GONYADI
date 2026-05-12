@@ -20,12 +20,27 @@ def register(
     user_input: UserCreate,
     session:    Session = Depends(get_session),
 ):
+    # 1. 이미 가입된 이메일인지 확인
     if user_crud.get_user_by_email(user_input.user_email, session):
         raise HTTPException(status_code=400, detail="이미 존재하는 이메일입니다.")
 
-    # 인증 여부 확인 (선택 사항: 실제 운영 시에는 여기서 인증 테이블을 조회하여 확인 가능)
-    
-    return user_crud.create_user(user_input, session)
+    # 2. 이메일 인증 완료 여부 확인
+    # 해당 이메일로 '사용됨(is_used=True)' 상태인 인증 기록이 있는지 확인합니다.
+    statement = select(EmailVerification).where(
+        EmailVerification.email == user_input.user_email,
+        EmailVerification.is_used == True
+    )
+    verification = session.exec(statement).first()
+
+    if not verification:
+        raise HTTPException(status_code=400, detail="이메일 인증이 완료되지 않았습니다.")
+
+    # 3. 회원가입 처리
+    new_user = user_crud.create_user(user_input, session)
+    return {
+        "message": "회원가입이 성공적으로 완료되었습니다.",
+        "user": new_user
+    }
 
 
 @router.post("/send-verification")
@@ -110,6 +125,10 @@ def login(
 
     # 3. JWT 토큰 발급
     access_token = create_access_token(data={"sub": str(user.user_pk)})
-    # user.user_pk → Users 모델의 PK (primary key)
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "message": "로그인에 성공했습니다.",
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
