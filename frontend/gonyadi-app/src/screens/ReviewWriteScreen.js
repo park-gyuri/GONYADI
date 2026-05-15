@@ -1,31 +1,128 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import DownloadIcon from '../components/icons/downloadIcon';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import ReviewSaveModal from '../components/ReviewSaveModal';
+import { useRoutes } from '../context/RouteContext';
+import { createReview } from '../api/reviewApi';
 
 const ReviewWriteScreen = () => {
   const router = useRouter();
-  const [ratings, setRatings] = useState({ 1: 0, 2: 0, 3: 0, 4: 0 });
+  const { id } = useLocalSearchParams();
+  const { allRoutes, addReview } = useRoutes();
+
+  const selectedRoute = allRoutes.find(r => String(r.id) === String(id));
+
+  // 일차별 일정 구성 (schedule 형식 우선, 없으면 flat places를 days로 분배)
+  const finalSchedule = useMemo(() => {
+    const recData = selectedRoute?.recommendation_data || {};
+    const totalDays = selectedRoute?.days || 1;
+
+    if (recData.schedule && recData.schedule.length > 0) {
+      let gi = 0;
+      return recData.schedule.map(d => ({
+        day: d.day,
+        places: d.places.map(p => ({ ...p, _gi: gi++ })),
+      }));
+    }
+
+    const flatPlaces = recData.places || [];
+    if (flatPlaces.length === 0) return [];
+
+    const perDay = Math.ceil(flatPlaces.length / totalDays);
+    const schedule = [];
+    for (let day = 1; day <= totalDays; day++) {
+      const start = (day - 1) * perDay;
+      const end = Math.min(start + perDay, flatPlaces.length);
+      if (start < flatPlaces.length) {
+        schedule.push({
+          day,
+          places: flatPlaces.slice(start, end).map((p, i) => ({ ...p, _gi: start + i })),
+        });
+      }
+    }
+    return schedule;
+  }, [selectedRoute]);
+
+  const [selectedDay, setSelectedDay] = useState(1);
+  const [ratings, setRatings] = useState({});
+  const [comments, setComments] = useState({});
+  const [photos, setPhotos] = useState({});
+  const [mainTitle, setMainTitle] = useState('');
   const [isSaveModalVisible, setSaveModalVisible] = useState(false);
 
-  const handleSave = () => {
-    // 팝업이 사라지게만 처리
+  useEffect(() => {
+    setRatings({});
+    setComments({});
+    setPhotos({});
+    setMainTitle(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
+    setSelectedDay(finalSchedule[0]?.day || 1);
+  }, [id, selectedRoute?.title]);
+
+  const currentDayPlaces = finalSchedule.find(d => d.day === selectedDay)?.places || [];
+
+  const handleSave = async () => {
+    if (!mainTitle.trim()) {
+      Alert.alert('안내', '제목을 입력해주세요.');
+      return;
+    }
+    const hasAnyRating = Object.values(ratings).some(r => r > 0);
+    if (!hasAnyRating) {
+      Alert.alert('안내', '장소 하나 이상에 꼭 별점을 남겨주세요.');
+      setSaveModalVisible(false);
+      return;
+    }
+
+    const newReview = {
+      id: Date.now(),
+      title: mainTitle,
+      content: Object.values(comments)[0] || '내용 없음',
+      thumbnail: Object.values(photos)[0]?.[0] || null,
+      routeId: id,
+      ratings,
+      comments,
+      photos,
+      date: new Date().toISOString().split('T')[0],
+    };
+
+    try {
+      await createReview({
+        itinerary_id: Number(id),
+        title: mainTitle,
+        ratings,
+        comments,
+        photos,
+      });
+    } catch (e) {
+      console.error('[ReviewWrite] DB 저장 실패, 로컬에만 저장됩니다:', e.message);
+    }
+
+    addReview(newReview);
     setSaveModalVisible(false);
+    router.replace('/review');
   };
 
-  const places = [
-    { id: 1, name: '장소A', transport: '도보 20분 이동' },
-    { id: 2, name: '장소B', transport: '버스 20분 이동' },
-    { id: 3, name: '장소C', transport: '도보 10분 이동' },
-    { id: 4, name: '장소D', transport: null },
-  ];
+  const handleRating = (placeId, score) => setRatings(prev => ({ ...prev, [placeId]: score }));
+  const handleCommentChange = (placeId, text) => setComments(prev => ({ ...prev, [placeId]: text }));
 
-  const handleRating = (placeId, score) => {
-    setRatings(prev => ({ ...prev, [placeId]: score }));
+  const pickImage = async (placeId) => {
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) {
+      Alert.alert('권한 필요', '사진을 첨부하려면 갤러리 접근 권한이 필요합니다.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotos(prev => ({ ...prev, [placeId]: [...(prev[placeId] || []), result.assets[0].uri] }));
+    }
   };
 
   return (
@@ -41,38 +138,54 @@ const ReviewWriteScreen = () => {
       </View>
 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+        {/* 제목 입력 */}
         <View style={styles.mainTitleContainer}>
           <TextInput
             style={styles.mainTitleInput}
             placeholder="제목을 입력하세요"
             placeholderTextColor="#888"
+            value={mainTitle}
+            onChangeText={setMainTitle}
           />
         </View>
 
+        {/* 일차 탭 */}
+        {finalSchedule.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabScroll} contentContainerStyle={styles.dayTabContainer}>
+            {finalSchedule.map(d => (
+              <TouchableOpacity
+                key={d.day}
+                style={[styles.dayTab, selectedDay === d.day && styles.dayTabActive]}
+                onPress={() => setSelectedDay(d.day)}
+              >
+                <Text style={[styles.dayTabText, selectedDay === d.day && styles.dayTabTextActive]}>
+                  {d.day}일차
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* 선택된 일차의 장소 목록 */}
         <View style={styles.listContainer}>
-          {places.map((item, index) => {
-            const isLastItem = index === places.length - 1;
-            const currentRating = ratings[item.id];
+          {currentDayPlaces.map((item, index) => {
+            const isLast = index === currentDayPlaces.length - 1;
+            const placeId = item.id || `place_${item._gi ?? index}`;
+            const currentRating = ratings[placeId] || 0;
 
             return (
-              <View key={item.id} style={styles.rowContainer}>
+              <View key={placeId} style={styles.rowContainer}>
                 <View style={styles.timelineLeft}>
                   <View style={styles.timelineLine} />
                 </View>
-
-                <View style={[styles.contentRight, isLastItem && styles.contentRightLast]}>
+                <View style={[styles.contentRight, isLast && styles.contentRightLast]}>
                   <View style={styles.placeHeader}>
                     <MarkerIcon width={24} height={24} style={{ marginRight: 8 }} />
                     <Text style={styles.placeName}>{item.name}</Text>
                     <View style={styles.starContainer}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <TouchableOpacity key={star} onPress={() => handleRating(item.id, star)}>
-                          <StarIcon 
-                            size={18} 
-                            isFilled={star <= currentRating} 
-                            color="#43B0AB" 
-                            style={{ marginRight: 2 }} 
-                          />
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <TouchableOpacity key={star} onPress={() => handleRating(placeId, star)}>
+                          <StarIcon size={18} isFilled={star <= currentRating} color="#43B0AB" style={{ marginRight: 2 }} />
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -83,50 +196,45 @@ const ReviewWriteScreen = () => {
                       style={styles.reviewInput}
                       placeholder="내용을 입력하세요"
                       placeholderTextColor="#888"
-                      multiline={true}
+                      multiline
+                      value={comments[placeId] || ''}
+                      onChangeText={text => handleCommentChange(placeId, text)}
                     />
                   </View>
 
-                  <TouchableOpacity style={styles.addImageBtn} activeOpacity={0.7}>
+                  {photos[placeId]?.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+                      {photos[placeId].map((uri, idx) => (
+                        <Image key={idx} source={{ uri }} style={styles.attachedPhoto} />
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  <TouchableOpacity style={styles.addImageBtn} activeOpacity={0.7} onPress={() => pickImage(placeId)}>
                     <Text style={styles.addImageText}>+</Text>
                   </TouchableOpacity>
-
-                  {item.transport ? (
-                    <Text style={styles.transportText}>{item.transport}</Text>
-                  ) : null}
                 </View>
               </View>
             );
           })}
         </View>
 
-        {/* 🌟 수정 포인트: 스크롤 안쪽, 리스트가 끝난 바로 아래에 포인트 박스를 배치했습니다! */}
-        <View style={styles.bottomStatusBox}>
-          <Text style={styles.statusLabel}>후기 완성도</Text>
-          <Text style={styles.statusValue}>0 % 완료</Text>
-        </View>
-
-        {/* 🌟 탭바에 가려지지 않게 스크롤 맨 밑에 여유 공간 확보 */}
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <ReviewSaveModal 
-        visible={isSaveModalVisible} 
-        onClose={() => setSaveModalVisible(false)} 
-        onSave={handleSave} 
+      <ReviewSaveModal
+        visible={isSaveModalVisible}
+        onClose={() => setSaveModalVisible(false)}
+        onSave={handleSave}
       />
-
     </SafeAreaView>
   );
 };
 
-// ==================================================
-// 🎨 스타일시트
-// ==================================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
 
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 60, borderBottomWidth: 1, borderBottomColor: '#E8ECEF', zIndex: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 60, borderBottomWidth: 1, borderBottomColor: '#E8ECEF' },
   backButton: { padding: 8 },
   backIcon: { fontSize: 24, fontWeight: 'bold', color: '#111' },
   headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#111' },
@@ -134,64 +242,55 @@ const styles = StyleSheet.create({
 
   scrollArea: { flex: 1 },
 
-  mainTitleContainer: { 
-    backgroundColor: '#FFFFFF', 
-    borderWidth: 1, 
-    borderColor: '#C4CCD8', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
+  mainTitleContainer: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#C4CCD8',
+    borderRadius: 8,
+    paddingVertical: 12,
     paddingHorizontal: 15,
     marginHorizontal: 10,
     marginTop: 10,
-    marginBottom: 20
+    marginBottom: 16,
   },
   mainTitleInput: { fontSize: 16, fontWeight: 'bold', color: '#111' },
+
+  dayTabScroll: { marginBottom: 16 },
+  dayTabContainer: { paddingHorizontal: 10, gap: 8, flexDirection: 'row' },
+  dayTab: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: '#C4CCD8', backgroundColor: '#F8F9FA' },
+  dayTabActive: { backgroundColor: '#43B0AB', borderColor: '#43B0AB' },
+  dayTabText: { fontSize: 14, color: '#888', fontWeight: '600' },
+  dayTabTextActive: { color: '#FFFFFF' },
 
   listContainer: { paddingHorizontal: 10 },
   rowContainer: { flexDirection: 'row' },
 
-  // 📏 타임라인 스타일 (ReviewDetail과 통일)
   timelineLeft: { width: 5, alignItems: 'center' },
   timelineLine: { flex: 1, width: 2, backgroundColor: '#444' },
 
   contentRight: { flex: 1, paddingLeft: 10, paddingBottom: 30 },
   contentRightLast: { paddingBottom: 0 },
 
-  placeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  placeName: { fontSize: 20, fontWeight: 'bold', color: '#111', marginRight: 15 },
+  placeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, flexWrap: 'wrap', gap: 8 },
+  placeName: { fontSize: 18, fontWeight: 'bold', color: '#111', flexShrink: 1 },
   starContainer: { flexDirection: 'row' },
 
-  reviewInputBox: { 
-    backgroundColor: '#FCFFE8', 
-    borderRadius: 12, 
-    padding: 16, 
-    height: 100, 
+  reviewInputBox: {
+    backgroundColor: '#FCFFE8',
+    borderRadius: 12,
+    padding: 16,
+    height: 100,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#DCE5B6'
+    borderColor: '#DCE5B6',
   },
   reviewInput: { fontSize: 14, color: '#333', textAlignVertical: 'top', height: '100%' },
 
+  photoScroll: { flexDirection: 'row', marginBottom: 12 },
+  attachedPhoto: { width: 60, height: 60, borderRadius: 8, marginRight: 8, backgroundColor: '#EEE' },
+
   addImageBtn: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: '#A0AAB5', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', marginBottom: 12 },
   addImageText: { fontSize: 32, color: '#888', fontWeight: '300' },
-
-  transportText: { fontSize: 14, color: '#43B0AB', fontWeight: 'bold', marginTop: 4, marginBottom: 10 },
-
-  bottomStatusBox: {
-    flexDirection: 'row',
-    backgroundColor: '#BCEBE3', // 디자인 사진에 맞춘 민트색
-    borderRadius: 24,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 20,
-    justifyContent: 'center', // 가운데로 더 모이게 수정
-    alignItems: 'center',
-    gap: 60, // 두 텍스트 사이의 간격
-  },
-  statusLabel: { fontSize: 16, color: '#555', fontWeight: '600' },
-  statusValue: { fontSize: 22, fontWeight: 'bold', color: '#111' },
 });
 
 export default ReviewWriteScreen;

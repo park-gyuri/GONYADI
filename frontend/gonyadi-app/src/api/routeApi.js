@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { mockApiData } from '../data/dummyData';
 
 /**
  * [routeApi.js]
@@ -15,16 +16,13 @@ import { apiClient } from './apiClient';
  * @returns {Promise<Object>} 백엔드를 거쳐 반환된 Gemini 추천 결과
  */
 export const requestNewRoute = async (formData) => {
-  // 사용자가 입력한 데이터를 받아(fromData) 백엔드로 보내는(POST) 역할
-  // 백엔드와 추천 요청 받을 주소 엔드포인트? 확인 후, 아래 경로를 수정
-  const endpoint = '/api/routes/recommend'; // 임시 예시값
+  const endpoint = '/api/v1/recommend';
 
-  // POST 방식은 보통 몸통(body)에 데이터를 넣어 보냄
-  // api/apiClient.js는 자동으로 JSON 형식 변환 후 백엔드로 넘겨줌
+  // 경로 추천은 외부 API를 여러 번 호출해서 오래 걸림 → 90초 타임아웃
   return await apiClient(endpoint, {
     method: 'POST',
     body: JSON.stringify(formData),
-  });
+  }, 90000);
 };
 
 // 서버 IP와 포트 -> 어떻게 맞춰서 연결 테스트를 진행할지 (스마트폰/애뮬레이터 환경 정보 포함)
@@ -41,11 +39,43 @@ export const requestNewRoute = async (formData) => {
  * - 백엔드에서 내가 저장한 글 묶음을 쭉 보여달라는 기능 (필요할 때 써보세요)
  */
 export const getMyRoutes = async () => {
-  // 백엔드 분과 논의해서 내 여행 목록을 불러올 엔드포인트 주소를 적어줍니다
-  const endpoint = '/api/routes/my'; // 임시 예시값
+  return await apiClient('/api/v1/itineraries');
+};
 
-  // 이 친구는 데이터 달라고 '조회'만 하기 때문에 GET 방식입니다
-  return await apiClient(endpoint, {
-    method: 'GET',
+/**
+ * 3. 내 폴더 목록 조회
+ */
+export const getFolders = async () => {
+  return await apiClient('/api/v1/folders');
+};
+
+/**
+ * 4. 새 폴더 생성
+ * @param {Object} folderData { name: '새 폴더명' }
+ */
+export const createFolder = async (folderData) => {
+  return await apiClient('/api/v1/folders', {
+    method: 'POST',
+    body: JSON.stringify(folderData),
   });
 };
+
+/**
+ * 5. 경로 저장 (Itinerary 생성)
+ * @param {Object} itineraryData 경로 저장 데이터
+ */
+export const saveItinerary = async (itineraryData) => {
+  return await apiClient('/api/v1/itineraries', {
+    method: 'POST',
+    body: JSON.stringify(itineraryData),
+  });
+};
+
+/**
+ * 6. 경로 상세 조회 (Itinerary 단건 조회)
+ * @param {number} itineraryId 일정 PK
+ */
+export const getItineraryDetail = async (itineraryId) => {
+  return await apiClient(`/api/v1/itineraries/${itineraryId}`);
+};
+

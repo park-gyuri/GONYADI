@@ -10,8 +10,8 @@ import { useRoutes } from '../context/RouteContext';
 
 const RouteScreen = () => {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('국내');
-  const [folders, setFolders] = useState(['국내', '해외']);
+  const { folders, allRoutes, toggleFavorite, addFolder } = useRoutes();
+  const [activeTabName, setActiveTabName] = useState('국내');
 
   // 모달 제어 상태
   const [isModalVisible, setModalVisible] = useState(false);
@@ -19,46 +19,28 @@ const RouteScreen = () => {
   const [selectedFolder, setSelectedFolder] = useState('');
   const [isOptionVisible, setOptionVisible] = useState(false);
 
-  // 🌟 전역 Context에서 데이터 가져오기!!
-  const { allRoutes, setAllRoutes, toggleFavorite } = useRoutes();
-
-  // 현재 선택된 탭에 맞는 데이터만 필터링하고 즐겨찾기를 위로 정렬
+  // 선택된 폴더(카테고리)에 해당하는 경로 필터링
   const filteredRoutes = allRoutes
-    .filter(route => route.category === activeTab)
+    .filter(route => route.category === activeTabName)
     .sort((a, b) => {
       if (a.isFavorite === b.isFavorite) return 0;
       return a.isFavorite ? -1 : 1;
     });
 
-  // 폴더 제출 처리 (생성 또는 수정)
+  // 폴더 제출 처리
   const handleSubmitFolder = (name) => {
     if (modalMode === 'create') {
-      setFolders([...folders, name]);
-      setActiveTab(name);
+      addFolder(name);
     } else {
-      setFolders(folders.map(f => f === selectedFolder ? name : f));
-      if (activeTab === selectedFolder) setActiveTab(name);
+      Alert.alert('안내', '현재 이름 수정 기능은 준비중입니다.');
     }
     setModalVisible(false);
   };
 
   // 폴더 삭제 처리
   const handleDeleteFolder = () => {
-    if (selectedFolder === '국내' || selectedFolder === '해외') {
-      Alert.alert("알림", "기본 폴더는 삭제할 수 없습니다.");
-      setOptionVisible(false);
-      return;
-    }
-    Alert.alert("폴더 삭제", `'${selectedFolder}' 폴더를 삭제할까요?`, [
-      { text: "취소", style: "cancel" },
-      {
-        text: "삭제", style: "destructive", onPress: () => {
-          setFolders(folders.filter(f => f !== selectedFolder));
-          setActiveTab('국내');
-          setOptionVisible(false);
-        }
-      }
-    ]);
+    Alert.alert("안내", "현재 폴더 삭제 기능은 준비중입니다.");
+    setOptionVisible(false);
   };
 
   return (
@@ -67,14 +49,14 @@ const RouteScreen = () => {
 
       {/* 📂 상단 폴더 탭 영역 */}
       <View style={styles.tabContainer}>
-        {folders.map((tab) => (
+        {folders.map((folder) => (
           <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-            onPress={() => setActiveTab(tab)}
-            onLongPress={() => { setSelectedFolder(tab); setOptionVisible(true); }}
+            key={folder.folder_pk}
+            style={[styles.tabButton, activeTabName === folder.name && styles.activeTabButton]}
+            onPress={() => setActiveTabName(folder.name)}
+            onLongPress={() => { setSelectedFolder(folder.name); setOptionVisible(true); }}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+            <Text style={[styles.tabText, activeTabName === folder.name && styles.activeTabText]}>{folder.name}</Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={styles.plusButton} onPress={() => { setModalMode('create'); setModalVisible(true); }}>
@@ -82,8 +64,8 @@ const RouteScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* 📍 [복구 완료!] 저장된 경로 리스트 영역 */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      {/* 📍 저장된 경로 리스트 영역 */}
+      <ScrollView style={styles.content} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
         {filteredRoutes.length > 0 ? (
           filteredRoutes.map((route) => (
             <TouchableOpacity
@@ -92,13 +74,13 @@ const RouteScreen = () => {
               onPress={() => router.push({ pathname: '/saved-route-detail', params: { id: route.id, title: route.title } })}
             >
               <View style={styles.iconBox}>
-                <FileIcon width={24} height={24} />
+                <FileIcon width={21} height={26} style={{ marginTop: -4 }} />
               </View>
               <View style={styles.routeInfo}>
                 <Text style={styles.routeTitle}>{route.title}</Text>
                 <View style={styles.routeDetailsRow}>
                   <GrayMarkerIcon width={14} height={14} style={{ marginRight: 4 }} />
-                  <Text style={styles.routeDetails}>{route.location} | {route.date}</Text>
+                  <Text style={styles.routeDetails}>{route.location} | {route.days}일 코스</Text>
                 </View>
               </View>
               <TouchableOpacity style={styles.favoriteBtn} onPress={() => toggleFavorite(route.id)}>
@@ -108,7 +90,7 @@ const RouteScreen = () => {
           ))
         ) : (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>'{activeTab}' 폴더에 저장된 경로가 없습니다.</Text>
+            <Text style={styles.emptyText}>저장된 경로가 없습니다.</Text>
           </View>
         )}
         <View style={{ height: 100 }} />
@@ -159,8 +141,8 @@ const styles = StyleSheet.create({
   routeDetailsRow: { flexDirection: 'row', alignItems: 'center' },
   routeDetails: { fontSize: 13, color: '#888' },
   favoriteBtn: { padding: 8, paddingRight: 0 },
-  emptyContainer: { marginTop: 100, alignItems: 'center' },
-  emptyText: { color: '#999' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 400 },
+  emptyText: { color: '#999', fontSize: 15 },
   optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   optionBox: { width: '70%', backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
   optionTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
