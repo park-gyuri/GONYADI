@@ -35,19 +35,16 @@ cd GONYADI/frontend/gonyadi-app
 # 의존성 라이브러리 설치 했나요?
 npm install
 
-# 현재 gonyadi-app 폴더인지 확인하고, Expo 서버 실행
+# 현재 gonyadi-app 폴더인지 확인하고 Expo 서버 실행
 # 큐알코드 찍어서 작업 상황 실시간 확인 가능
 npx expo start
 # start 뒤에 -c 를 붙이면 실행했던 캐시 삭제 후 실행
 # 종료는 cntrl + c
 
-# git에 클론하기
-git checkout -b 작업자성/기능
-git add .
-# . 또는 파일 이름
-git commit -m "작성 규칙에 맞춰 적기"
-git push origin 작업자성/기능
-# 이 부분은 기존 README에 있던 내용. 다시 기록용 적어둔 것
+# 파워쉘 실행 코드
+pwsh ./start-mac.ps1
+# 종료는 cntrl + c
+
 
 ## 🛠 필수 준비물 (Prerequisites)
 프로젝트를 실행하기 전에 아래 환경이 세팅되어 있어야 합니다.
@@ -58,3 +55,20 @@ git push origin 작업자성/기능
    * **PC 에뮬레이터 (선택):** iOS Simulator(Mac 전용) 또는 Android Studio Emulator가 필요합니다.
 # 우리는 안드로이드 개발이기에 Android Studio Emulator를 사용
 # 이와 관련된 비슷한 내용은 Frontend/gonyadi-app/README.md에 자동 생성되어 있으니 참고 (but 영어임)
+```
+
+###
+```bash
+# git에 커밋하기
+
+# 작업 전에 브랜치로 이동
+git checkout -b 작업자성/기능 # 이미 있는 브랜치는 -b 빼고
+git merge main # 코드가 최신 main보다 뒤쳐졌을 때 main 코드를 가져와서 합치기
+# 또는 git pull origin main 으로 main 코드를 가져올 수도 있음
+
+git add . # 또는 해당 파일 경로들 Ex. src/screens/LoginScreen.js
+
+git commit -m "작성 규칙에 맞춰 적기"
+git push origin 작업자성/기능
+# 이 부분은 기존 README에 있던 내용. 다시 기록용 적어둔 것
+```
