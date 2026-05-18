@@ -9,7 +9,7 @@
  * - 배포: .env에 배포 서버 주소 입력 (예: https://api.gonyadi.com)
  */
 import Constants from 'expo-constants';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 /**
  * 백엔드 BASE_URL을 자동으로 결정한다.
  * 우선순위: .env 명시값 > Expo 자동 감지 IP > localhost
@@ -44,6 +44,12 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
     'Content-Type': 'application/json',
   };
 
+  // 저장된 토큰이 있다면 가져와서 헤더에 추가
+  const token = await AsyncStorage.getItem('access_token');
+  if (token) {
+    defaultHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
   const finalOptions = {
     ...options,
     headers: {
@@ -71,6 +77,8 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
 
         if (errorData.detail && Array.isArray(errorData.detail)) {
           errorMessage = errorData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+        } else if (errorData.detail && typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
         } else {
           errorMessage = errorData.message || errorMessage;
         }

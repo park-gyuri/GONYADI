@@ -1,8 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { getFolders, getMyRoutes } from '../api/routeApi';
 
-import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
-
 const RouteContext = createContext();
 
 export const RouteProvider = ({ children }) => {
@@ -14,43 +12,48 @@ export const RouteProvider = ({ children }) => {
   // 작성된 리뷰 목록 (초기에는 빈 상태)
   const [reviews, setReviews] = useState([]);
 
+  const loadRouteData = async () => {
+    try {
+      const [serverFolders, serverRoutes] = await Promise.all([
+        getFolders(),
+        getMyRoutes()
+      ]);
+      
+      if (serverFolders && serverFolders.length > 0) {
+        setFolders(serverFolders);
+      }
+
+      if (serverRoutes && serverRoutes.length > 0) {
+        // 서버 데이터를 앱 UI 형식에 맞춰 변환
+        const formattedRoutes = serverRoutes.map(r => ({
+          id: r.itinerary_pk,
+          category: r.folder_name || '국내', // 서버 응답에 따라 조정
+          title: r.title,
+          location: r.region,
+          date: r.created_at || new Date().toISOString().split('T')[0],
+          days: r.days,
+          isFavorite: false,
+          recommendation_data: r.recommendation_data
+        }));
+        setAllRoutes(formattedRoutes);
+      } else {
+        setAllRoutes([]);
+      }
+    } catch (error) {
+      console.error('초기 데이터 로딩 실패:', error);
+    }
+  };
+
   // 🌟 앱 구동 시 서버에서 데이터 가져오기
   useEffect(() => {
-    const initData = async () => {
-      try {
-        const [serverFolders, serverRoutes] = await Promise.all([
-          getFolders(),
-          getMyRoutes()
-        ]);
-        
-        if (serverFolders && serverFolders.length > 0) {
-          setFolders(serverFolders);
-        }
-
-        if (serverRoutes && serverRoutes.length > 0) {
-          // 서버 데이터를 앱 UI 형식에 맞춰 변환
-          const formattedRoutes = serverRoutes.map(r => ({
-            id: r.itinerary_pk,
-            category: r.folder_name || '국내', // 서버 응답에 따라 조정
-            title: r.title,
-            location: r.region,
-            date: r.created_at || new Date().toISOString().split('T')[0],
-            days: r.days,
-            isFavorite: false,
-            recommendation_data: r.recommendation_data
-          }));
-          
-          setAllRoutes(prev => {
-            const newRoutes = formattedRoutes.filter(fr => !prev.some(pr => pr.id === fr.id));
-            return [...newRoutes, ...prev];
-          });
-        }
-      } catch (error) {
-        console.error('초기 데이터 로딩 실패:', error);
-      }
-    };
-    initData();
+    loadRouteData();
   }, []);
+
+  const clearRouteData = () => {
+    setFolders([]);
+    setAllRoutes([]);
+    setReviews([]);
+  };
 
   const toggleFavorite = (id) => {
     setAllRoutes(prev => prev.map(route => 
@@ -65,13 +68,37 @@ export const RouteProvider = ({ children }) => {
       if (newFolderData && newFolderData.folder_pk) {
         setFolders(prev => [...prev, newFolderData]);
       } else {
-        // 백엔드 응답이 예상과 다를 경우 로컬로 추가
         setFolders(prev => [...prev, { folder_pk: Date.now(), name }]);
       }
     } catch (error) {
       console.error('폴더 생성 실패:', error);
-      // 오프라인이거나 서버 에러일 때도 UI에서는 추가되도록 fallback
       setFolders(prev => [...prev, { folder_pk: Date.now(), name }]);
+    }
+  };
+
+  const updateFolder = async (folderId, newName) => {
+    try {
+      const { updateFolderApi } = require('../api/routeApi');
+      await updateFolderApi(folderId, newName);
+      setFolders(prev => prev.map(f => f.folder_pk === folderId ? { ...f, name: newName } : f));
+      
+      // 관련 경로 카테고리 이름도 일괄 업데이트 (선택 사항)
+      setAllRoutes(prev => prev.map(r => r.category === prev.find(f=>f.folder_pk===folderId)?.name ? { ...r, category: newName } : r));
+    } catch (error) {
+      console.error('폴더 이름 수정 실패:', error);
+      throw error;
+    }
+  };
+
+  const deleteFolder = async (folderId) => {
+    try {
+      const { deleteFolderApi } = require('../api/routeApi');
+      await deleteFolderApi(folderId);
+      setFolders(prev => prev.filter(f => f.folder_pk !== folderId));
+      // 경로도 삭제된다면 여기서 allRoutes에서 제거 필요
+    } catch (error) {
+      console.error('폴더 삭제 실패:', error);
+      throw error;
     }
   };
 
@@ -80,7 +107,7 @@ export const RouteProvider = ({ children }) => {
   };
 
   return (
-    <RouteContext.Provider value={{ folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, reviews, addReview }}>
+    <RouteContext.Provider value={{ folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder, reviews, addReview, loadRouteData, clearRouteData }}>
       {children}
     </RouteContext.Provider>
   );
