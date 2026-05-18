@@ -25,11 +25,11 @@ function getBaseUrl() {
   const debuggerHost = Constants.expoConfig?.hostUri;
   if (debuggerHost) {
     const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:8080`;
+    return `http://${ip}:8000`;
   }
 
   // 3) 기본값 (웹 브라우저 등)
-  return 'http://localhost:8080';
+  return 'http://localhost:8000';
 }
 
 export const BASE_URL = getBaseUrl();
