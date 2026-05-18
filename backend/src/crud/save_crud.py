@@ -27,6 +27,26 @@ def get_folders_by_user(session: Session, user_id: int) -> list[Folders]:
         
     return results
 
+def update_folder(session: Session, folder_id: int, new_name: str, user_id: int) -> Folders | None:
+    statement = select(Folders).where(Folders.folder_pk == folder_id, Folders.user_id == user_id)
+    folder = session.exec(statement).first()
+    if folder:
+        folder.name = new_name
+        session.add(folder)
+        session.commit()
+        session.refresh(folder)
+        return folder
+    return None
+
+def delete_folder(session: Session, folder_id: int, user_id: int) -> bool:
+    statement = select(Folders).where(Folders.folder_pk == folder_id, Folders.user_id == user_id)
+    folder = session.exec(statement).first()
+    if folder:
+        session.delete(folder)
+        session.commit()
+        return True
+    return False
+
 def create_itinerary(session: Session, itinerary_in: ItineraryCreate, user_id: int) -> Itineraries:
     db_itinerary = Itineraries(
         folder_id=itinerary_in.folder_id,
