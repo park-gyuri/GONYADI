@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
 from src.schemas.user_schema import UserCreate, UserLogin
-from src.core.security import verify_password, create_access_token, create_refresh_token, verify_access_token
+from src.core.security import verify_password, create_access_token, create_refresh_token, verify_access_token, get_current_user
 import src.crud.user_crud as user_crud
 import random
 from src.models.auth import EmailVerification
@@ -45,6 +45,10 @@ def register(
 
 @router.post("/send-verification")
 def send_verification(email: str, session: Session = Depends(get_session)):
+    # 0. 이미 가입된 이메일인지 확인
+    existing_user = user_crud.get_user_by_email(email, session)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다.")
     # 1. 이메일 형식 검증 (커스텀 메시지)
     try:
         # check_deliverability=True로 설정하면 실제 존재하는 도메인인지 체크합니다.
@@ -117,11 +121,11 @@ def login(
     # 1. 아이디로 유저 찾기
     user = user_crud.get_user_by_id(user_input.user_id, session)
     if user is None:
-        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
+        raise HTTPException(status_code=401, detail="아이디가 존재하지 않습니다.")
 
     # 2. 비밀번호 확인
     if not verify_password(user_input.user_password, user.user_password):
-        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
+        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
 
     # 3. JWT 토큰 발급 (Access & Refresh)
     access_token = create_access_token(data={"sub": str(user.user_pk)})
@@ -153,5 +157,14 @@ def refresh_token(refresh_token: str, session: Session = Depends(get_session)):
     return {
         "access_token": new_access_token,
         "token_type": "bearer"
+    }
+
+@router.get("/me")
+def get_me(current_user: dict = Depends(get_current_user)):
+    """현재 로그인한 유저의 정보를 반환합니다."""
+    return {
+        "user_id": current_user.user_id,
+        "user_nickname": current_user.user_nickname,
+        "user_email": current_user.user_email
     }
 
