@@ -10,13 +10,14 @@ import { useRoutes } from '../context/RouteContext';
 
 const RouteScreen = () => {
   const router = useRouter();
-  const { folders, allRoutes, toggleFavorite, addFolder } = useRoutes();
+  const { folders, allRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder } = useRoutes();
   const [activeTabName, setActiveTabName] = useState('국내');
 
   // 모달 제어 상태
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState('create');
-  const [selectedFolder, setSelectedFolder] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [selectedFolderName, setSelectedFolderName] = useState('');
   const [isOptionVisible, setOptionVisible] = useState(false);
 
   // 선택된 폴더(카테고리)에 해당하는 경로 필터링
@@ -28,19 +29,44 @@ const RouteScreen = () => {
     });
 
   // 폴더 제출 처리
-  const handleSubmitFolder = (name) => {
+  const handleSubmitFolder = async (name) => {
     if (modalMode === 'create') {
       addFolder(name);
-    } else {
-      Alert.alert('안내', '현재 이름 수정 기능은 준비중입니다.');
+    } else if (modalMode === 'edit' && selectedFolderId) {
+      try {
+        await updateFolder(selectedFolderId, name);
+        if (activeTabName === selectedFolderName) setActiveTabName(name); // 현재 보고 있는 탭이면 이름 변경
+      } catch (e) {
+        Alert.alert("수정 실패", "폴더 이름을 수정할 수 없습니다.");
+      }
     }
     setModalVisible(false);
   };
 
   // 폴더 삭제 처리
   const handleDeleteFolder = () => {
-    Alert.alert("안내", "현재 폴더 삭제 기능은 준비중입니다.");
-    setOptionVisible(false);
+    Alert.alert(
+      "폴더 삭제", 
+      `'${selectedFolderName}' 폴더를 정말 삭제하시겠습니까?\n내부에 저장된 경로가 삭제될 수 있습니다.`,
+      [
+        { text: "취소", style: "cancel" },
+        { 
+          text: "삭제", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await deleteFolder(selectedFolderId);
+              if (activeTabName === selectedFolderName) {
+                setActiveTabName('국내'); // 삭제된 경우 기본 폴더로 이동
+              }
+              setOptionVisible(false);
+            } catch (e) {
+              Alert.alert("삭제 실패", "폴더를 삭제할 수 없습니다.");
+            }
+          } 
+        }
+      ]
+    );
   };
 
   return (
@@ -54,7 +80,11 @@ const RouteScreen = () => {
             key={folder.folder_pk}
             style={[styles.tabButton, activeTabName === folder.name && styles.activeTabButton]}
             onPress={() => setActiveTabName(folder.name)}
-            onLongPress={() => { setSelectedFolder(folder.name); setOptionVisible(true); }}
+            onLongPress={() => { 
+              setSelectedFolderId(folder.folder_pk); 
+              setSelectedFolderName(folder.name); 
+              setOptionVisible(true); 
+            }}
           >
             <Text style={[styles.tabText, activeTabName === folder.name && styles.activeTabText]}>{folder.name}</Text>
           </TouchableOpacity>
@@ -97,10 +127,10 @@ const RouteScreen = () => {
       </ScrollView>
 
       {/* 팝업 모달들 */}
-      <FolderCreateModal
+        <FolderCreateModal
         visible={isModalVisible}
         mode={modalMode}
-        initialValue={modalMode === 'edit' ? selectedFolder : ''}
+        initialValue={modalMode === 'edit' ? selectedFolderName : ''}
         onClose={() => setModalVisible(false)}
         onSubmit={handleSubmitFolder}
       />
@@ -108,7 +138,7 @@ const RouteScreen = () => {
       <Modal visible={isOptionVisible} transparent={true} animationType="fade">
         <TouchableOpacity style={styles.optionOverlay} onPress={() => setOptionVisible(false)}>
           <View style={styles.optionBox}>
-            <Text style={styles.optionTitle}>폴더 관리: {selectedFolder}</Text>
+            <Text style={styles.optionTitle}>폴더 관리: {selectedFolderName}</Text>
             <TouchableOpacity style={styles.optionBtn} onPress={() => { setOptionVisible(false); setModalMode('edit'); setModalVisible(true); }}>
               <Text style={styles.optionBtnText}>이름 수정하기</Text>
             </TouchableOpacity>

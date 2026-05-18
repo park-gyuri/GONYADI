@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
-
-const searchHistory = ['경주', '대구', '광주', '군산', '서울', '원주', '횡성', '울산', '여수'];
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const recommendedDestinations = [
   { id: 1, city: '경주', country: '대한민국', image: 'https://picsum.photos/seed/gyeongju/300/200' },
@@ -18,13 +17,46 @@ const recommendedDestinations = [
 const MainScreen = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState([]);
+
+  React.useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const storedHistory = await AsyncStorage.getItem('search_history');
+        if (storedHistory) {
+          setSearchHistory(JSON.parse(storedHistory));
+        }
+      } catch (e) {
+        console.error('검색 기록 로드 실패', e);
+      }
+    };
+    loadHistory();
+  }, []);
+
+  const saveHistoryToStorage = async (newHistory) => {
+    try {
+      await AsyncStorage.setItem('search_history', JSON.stringify(newHistory));
+    } catch (e) {
+      console.error('검색 기록 저장 실패', e);
+    }
+  };
 
   const navigateToRecommend = (keyword = searchQuery) => {
     if (keyword.trim() !== '') {
-      router.push({ pathname: '/recommend', params: { destination: keyword } });
+      // 검색 기록 추가 (중복 제거 및 맨 앞으로, 최대 15개)
+      const newHistory = [keyword.trim(), ...searchHistory.filter(item => item !== keyword.trim())].slice(0, 15);
+      setSearchHistory(newHistory);
+      saveHistoryToStorage(newHistory);
+      router.push({ pathname: '/recommend', params: { destination: keyword.trim() } });
     } else {
       router.push('/recommend');
     }
+  };
+
+  const removeHistoryItem = (keyword) => {
+    const newHistory = searchHistory.filter(item => item !== keyword);
+    setSearchHistory(newHistory);
+    saveHistoryToStorage(newHistory);
   };
 
   return (
@@ -54,15 +86,20 @@ const MainScreen = () => {
 
           <Text style={styles.searchHistoryTitle}>검색 내역</Text>
           <View style={styles.searchHistoryWrapper}>
-            {searchHistory.map((city, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.historyBadge}
-                onPress={() => navigateToRecommend(city)}
-              >
-                <Text style={styles.historyBadgeText}>{city}</Text>
-              </TouchableOpacity>
-            ))}
+            {searchHistory.length === 0 ? (
+              <Text style={styles.emptyHistoryText}>검색한 내역이 없습니다.</Text>
+            ) : (
+              searchHistory.map((city, index) => (
+                <View key={index} style={styles.historyBadge}>
+                  <TouchableOpacity onPress={() => navigateToRecommend(city)}>
+                    <Text style={styles.historyBadgeText}>{city}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => removeHistoryItem(city)} style={styles.deleteBadgeBtn}>
+                    <Text style={styles.deleteBadgeText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
         </View>
 
@@ -156,9 +193,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   historyBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.4)', // 반투명한 배경으로 튀지 않게
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)', 
     paddingVertical: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#C6DFD6',
@@ -167,6 +206,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     fontWeight: '400',
+    marginRight: 6,
+  },
+  deleteBadgeBtn: {
+    padding: 2,
+  },
+  deleteBadgeText: {
+    fontSize: 14,
+    color: '#999',
+    fontWeight: 'bold',
+  },
+  emptyHistoryText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 10,
   },
   recommendSection: {
     marginBottom: 20,

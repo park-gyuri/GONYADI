@@ -60,6 +60,19 @@ export const createFolder = async (folderData) => {
   });
 };
 
+export const updateFolderApi = async (folderId, newName) => {
+  return await apiClient(`/api/v1/folders/${folderId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name: newName }),
+  });
+};
+
+export const deleteFolderApi = async (folderId) => {
+  return await apiClient(`/api/v1/folders/${folderId}`, {
+    method: 'DELETE',
+  });
+};
+
 /**
  * 5. 경로 저장 (Itinerary 생성)
  * @param {Object} itineraryData 경로 저장 데이터

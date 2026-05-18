@@ -9,10 +9,32 @@ import SettingIcon from '../components/icons/settingIcon';
 import PencilIcon from '../components/icons/pencilIcon';
 
 import { useRoutes } from '../context/RouteContext';
+import { apiClient } from '../api/apiClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MyScreen = () => {
   const router = useRouter();
-  const { allRoutes, reviews } = useRoutes();
+  const { allRoutes, reviews, clearRouteData } = useRoutes();
+  const [userProfile, setUserProfile] = React.useState({ user_nickname: '로딩중...', user_id: '' });
+
+  React.useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await apiClient('/api/v1/auth/me');
+        setUserProfile(data);
+      } catch (error) {
+        console.error('프로필 로딩 실패:', error);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('access_token');
+    await AsyncStorage.removeItem('refresh_token');
+    clearRouteData();
+    router.replace('/login');
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -28,7 +50,7 @@ const MyScreen = () => {
           <View style={styles.avatar} />
 
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>홍길동</Text>
+            <Text style={styles.profileName}>{userProfile.user_nickname}</Text>
             <Text style={styles.profilePoints}>포인트 0P</Text>
           </View>
 
@@ -79,7 +101,7 @@ const MyScreen = () => {
               <Text style={styles.settingsItemText}>알림설정</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingsItem, { borderBottomWidth: 0 }]} activeOpacity={0.6}>
+            <TouchableOpacity style={[styles.settingsItem, { borderBottomWidth: 0 }]} activeOpacity={0.6} onPress={handleLogout}>
               <Text style={styles.settingsItemText}>로그아웃</Text>
             </TouchableOpacity>
           </View>
