@@ -29,24 +29,25 @@ load_dotenv()
 # ---------- JWT 토큰 ----------
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 토큰 유효 기간 (예: 24시간)
 
-# 토큰 발행 함수
-def create_access_token(data: dict, expiration_period: Optional[timedelta] = None):
-    payload = data.copy()
+# 유효 기간 설정
+ACCESS_TOKEN_EXPIRE_MINUTES = 30       # Access Token: 30분 (짧게)
+REFRESH_TOKEN_EXPIRE_DAYS = 14         # Refresh Token: 14일 (길게)
 
-    # 1. 유효기간 계산 (직접 지정값이 없으면 기본 24시간 적용)
-    if expiration_period:
-        expire = datetime.utcnow() + expiration_period
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    # 2. 페이로드(내용물)에 만료 시간 추가
-    payload.update({"exp": expire})
+# 토큰 발행 공통 함수
+def create_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-    # 3. 내용 + 비밀키 + 알고리즘을 섞어서 최종 JWT 문자열 생성
-    access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    return access_token
+# 1. Access Token 생성 (단기)
+def create_access_token(data: dict):
+    return create_token(data, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+# 2. Refresh Token 생성 (장기)
+def create_refresh_token(data: dict):
+    return create_token(data, timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
 # 토큰 검증 함수
 def verify_access_token(token: str):
