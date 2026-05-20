@@ -52,7 +52,7 @@ def send_verification(email: str, session: Session = Depends(get_session)):
     # 1. 이메일 형식 검증 (커스텀 메시지)
     try:
         # check_deliverability=True로 설정하면 실제 존재하는 도메인인지 체크합니다.
-        validate_email(email, check_deliverability=True)
+        validate_email(email, check_deliverability=False)
     except EmailNotValidError:
         raise HTTPException(
             status_code=400, 

@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFolders, getMyRoutes } from '../api/routeApi';
 
 const RouteContext = createContext();
@@ -44,9 +45,15 @@ export const RouteProvider = ({ children }) => {
     }
   };
 
-  // 🌟 앱 구동 시 서버에서 데이터 가져오기
+  // 🌟 앱 구동 시 로그인된 경우에만 서버에서 데이터 가져오기
   useEffect(() => {
-    loadRouteData();
+    const loadIfAuthenticated = async () => {
+      const token = await AsyncStorage.getItem('access_token');
+      if (token) {
+        loadRouteData();
+      }
+    };
+    loadIfAuthenticated();
   }, []);
 
   const clearRouteData = () => {

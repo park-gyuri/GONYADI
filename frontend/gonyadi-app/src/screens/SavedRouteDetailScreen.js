@@ -330,10 +330,23 @@ const SavedRouteDetailScreen = () => {
     try {
       const currentPlaces = daysData[selectedDay] || [];
       const placesForApi = currentPlaces.map(p => ({
-        name: p.name, lat: p.lat, lng: p.lng, reason: p.address, duration: 60, category: '관광',
+        name: p.name,
+        lat: p.lat ?? 0,
+        lng: p.lng ?? 0,
+        reason: p.address || p.name,
+        duration: 60,
+        category: '관광',
       }));
+      // 저장 시 함께 보관해둔 원본 요청 파라미터 사용 (없으면 기본값)
+      const originalReq = apiData?._request || {};
       const modifyData = {
         region: itinerary.region,
+        nights: originalReq.nights ?? Math.max(0, (itinerary.days || 1) - 1),
+        days: originalReq.days ?? (itinerary.days || 1),
+        number_of_people: originalReq.number_of_people ?? 2,
+        transports: originalReq.transports ?? ['도보'],
+        themes: originalReq.themes ?? ['힐링'],
+        conditions: originalReq.conditions ?? [],
         user_message: modifyText,
         original_places: placesForApi,
       };
@@ -342,7 +355,7 @@ const SavedRouteDetailScreen = () => {
       processDaysData(data);
       Alert.alert('성공', '경로가 수정되었습니다.');
     } catch (error) {
-      Alert.alert('에러', '수정 요청에 실패했습니다.');
+      Alert.alert('에러', `수정 요청에 실패했습니다: ${error.message}`);
     } finally {
       setIsModifying(false);
       setModifyText('');
