@@ -196,4 +196,8 @@ def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate]) ->
 
 위 후보 중에서 사용자의 여행 조건에 최적인 장소들을 선택하고,
 동선이 자연스럽도록 방문 순서(order)와 추천 사유(reason), 예상 소요 시간(duration, 분)을 반환하십시오.
+
+[일정 구성 조건]
+- 하루 구조: 아침 식사 → 오전 활동 → 점심 식사 → 오후 활동(1~2개) → 저녁 식사 → 저녁 활동(선택)
+- 동일 유형 장소(스파·온천 등)는 하루 1개로 제한. 테마 장소 60% + 식사·보조 40% 비율 유지.
 """.strip()

@@ -306,17 +306,20 @@ const RouteResultScreen = () => {
   // 백엔드 데이터(places) 또는 더미 데이터(schedule)를 프론트엔드 UI에 맞게 변환
   const [daysData, setDaysData] = useState(() => {
     if (apiData?.schedule) {
-      // 1. dummyData.js의 schedule 형식이 있는 경우 (Day 1, 2, 3 지원)
+      // 1. 백엔드 schedule 형식 (Day 1, 2, 3 지원)
       const data = {};
       apiData.schedule.forEach(dayInfo => {
-        data[dayInfo.day] = dayInfo.places.map((place, index) => ({
-          id: place.id || `${dayInfo.day}-${index}`,
-          name: place.name,
-          address: place.address || place.description,
-          transport: place.transport ? `${place.transport.type} ${place.transport.duration}` : null,
-          lat: place.lat || (35.10 + Math.random() * 0.05), // 위치 정보 없으면 랜덤 (데모용)
-          lng: place.lng || (129.04 + Math.random() * 0.05)
-        }));
+        data[dayInfo.day] = dayInfo.places.map((place, index) => {
+          const segment = routeSegments.find(seg => seg.from_name === place.name) || null;
+          return {
+            id: place.id || `${dayInfo.day}-${index}`,
+            name: place.name,
+            address: place.address || place.description || place.reason,
+            transportSegment: segment,
+            lat: place.lat || (35.10 + Math.random() * 0.05),
+            lng: place.lng || (129.04 + Math.random() * 0.05)
+          };
+        });
       });
       return data;
     } else {
