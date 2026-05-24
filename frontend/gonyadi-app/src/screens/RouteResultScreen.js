@@ -408,15 +408,23 @@ const RouteResultScreen = () => {
       const currentPlaces = daysData[selectedDay] || [];
       const placesForApi = currentPlaces.map(p => ({
         name: p.name,
-        lat: p.lat,
-        lng: p.lng,
-        reason: p.address,
+        lat: p.lat ?? 0,
+        lng: p.lng ?? 0,
+        reason: p.address || p.name,
         duration: 60,
         category: '관광',
       }));
 
       const modifyData = {
-        ...(originalRequest || { region: '서울', transports: ['도보'], themes: ['힐링'], days: 3, nights: 2 }),
+        region: originalRequest?.region || '알 수 없음',
+        nights: originalRequest?.nights ?? 1,
+        days: originalRequest?.days ?? 2,
+        number_of_people: originalRequest?.number_of_people ?? 2,
+        transports: originalRequest?.transports ?? ['도보'],
+        themes: originalRequest?.themes ?? ['힐링'],
+        conditions: originalRequest?.conditions ?? [],
+        start_date: originalRequest?.start_date ?? undefined,
+        end_date: originalRequest?.end_date ?? undefined,
         user_message: modifyText,
         original_places: placesForApi,
       };
@@ -474,8 +482,13 @@ const RouteResultScreen = () => {
         folder_id: selectedFolderId,
         title: saveTitle,
         region: originalRequest?.region || '알 수 없음',
+        nights: originalRequest?.nights ?? null,
         days: originalRequest?.days || 2,
-        recommendation_data: apiData,
+        number_of_people: originalRequest?.number_of_people ?? 2,
+        budget_per_person: originalRequest?.budget_per_person ?? null,
+        start_date: originalRequest?.start_date ?? null,
+        end_date: originalRequest?.end_date ?? null,
+        recommendation_data: { ...apiData, _request: originalRequest },
       };
 
       // 🌟 백엔드 저장 API 호출
