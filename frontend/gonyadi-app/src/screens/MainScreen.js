@@ -43,8 +43,8 @@ const MainScreen = () => {
 
   const navigateToRecommend = (keyword = searchQuery) => {
     if (keyword.trim() !== '') {
-      // 검색 기록 추가 (중복 제거 및 맨 앞으로, 최대 15개)
-      const newHistory = [keyword.trim(), ...searchHistory.filter(item => item !== keyword.trim())].slice(0, 15);
+      // 검색 기록 추가 (중복 제거 및 맨 앞으로, 최대 50개 저장)
+      const newHistory = [keyword.trim(), ...searchHistory.filter(item => item !== keyword.trim())].slice(0, 50);
       setSearchHistory(newHistory);
       saveHistoryToStorage(newHistory);
       router.push({ pathname: '/recommend', params: { destination: keyword.trim() } });
@@ -89,9 +89,9 @@ const MainScreen = () => {
             {searchHistory.length === 0 ? (
               <Text style={styles.emptyHistoryText}>검색한 내역이 없습니다.</Text>
             ) : (
-              searchHistory.map((city, index) => (
+              searchHistory.slice(0, 10).map((city, index) => (
                 <View key={index} style={styles.historyBadge}>
-                  <TouchableOpacity onPress={() => navigateToRecommend(city)}>
+                  <TouchableOpacity onPress={() => navigateToRecommend(city)} style={styles.badgeTextBtn}>
                     <Text style={styles.historyBadgeText}>{city}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => removeHistoryItem(city)} style={styles.deleteBadgeBtn}>
@@ -190,30 +190,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 10,
+    gap: 6,
   },
   historyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.4)', 
-    paddingVertical: 6,
-    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#C6DFD6',
   },
+  badgeTextBtn: {
+    paddingVertical: 6,
+    paddingLeft: 10,
+    paddingRight: 4,
+  },
   historyBadgeText: {
     fontSize: 14,
     color: '#333',
-    fontWeight: '400',
-    marginRight: 6,
+    fontWeight: '500',
   },
   deleteBadgeBtn: {
-    padding: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   deleteBadgeText: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: 16,
+    color: '#888',
     fontWeight: 'bold',
   },
   emptyHistoryText: {

@@ -124,8 +124,8 @@ const styles = StyleSheet.create({
 
   // 탭 스타일
   tabContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 20, alignItems: 'center' },
-  tabButton: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: '#C4CCD8', marginRight: 10, backgroundColor: '#FFF' },
-  activeTabButton: { backgroundColor: '#F4FAD3', borderColor: '#DCE5B6' },
+  tabButton: { height: 32, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: '#C4CCD8', marginRight: 10, backgroundColor: '#FFF' },
+  activeTabButton: { backgroundColor: '#E0F2F1', borderColor: '#1ABC9C' },
   tabText: { fontSize: 14, color: '#555' },
   activeTabText: { color: '#111', fontWeight: 'bold' },
 

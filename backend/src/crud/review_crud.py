@@ -17,14 +17,18 @@ def create_review(session: Session, review_in: ReviewCreate, user_id: int) -> Re
     session.refresh(db_review)
     return db_review
 
+from src.models.user import Users
+
 def get_all_reviews(session: Session) -> list[ReviewListItem]:
-    statement = select(Reviews, Itineraries).join(
+    statement = select(Reviews, Itineraries, Users).join(
         Itineraries, Reviews.itinerary_id == Itineraries.itinerary_pk, isouter=True
+    ).join(
+        Users, Reviews.user_id == Users.user_pk, isouter=True
     ).order_by(Reviews.created_at.desc())
 
     results = session.exec(statement).all()
     items = []
-    for review, itinerary in results:
+    for review, itinerary, user in results:
         all_comments = list(review.comments.values()) if review.comments else []
         preview = next((c for c in all_comments if c), None)
 
@@ -43,6 +47,7 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
             preview_comment=preview,
             thumbnail=thumbnail,
             region=itinerary.region if itinerary else None,
+            author=user.user_nickname if user else "익명 사용자",
             created_at=review.created_at,
         ))
     return items

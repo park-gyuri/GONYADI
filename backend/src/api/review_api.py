@@ -8,9 +8,15 @@ router = APIRouter()
 
 TEMP_USER_ID = 1
 
+from src.core.security import get_current_user
+
 @router.post("/reviews", response_model=ReviewDetailResponse)
-def create_review(review_in: ReviewCreate, session: Session = Depends(get_session)):
-    review = review_crud.create_review(session=session, review_in=review_in, user_id=TEMP_USER_ID)
+def create_review(
+    review_in: ReviewCreate, 
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    review = review_crud.create_review(session=session, review_in=review_in, user_id=current_user.user_pk)
     return review_crud.get_review_by_id(session=session, review_id=review.review_pk)
 
 @router.get("/reviews", response_model=list[ReviewListItem])
