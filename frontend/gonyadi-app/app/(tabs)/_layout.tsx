@@ -101,7 +101,7 @@ export default function TabLayout() {
         name="my"
         options={{
           tabBarIcon: ({ focused }) => {
-            const isMyActive = focused || pathname === '/my' || pathname === '/my-review-history';
+            const isMyActive = focused || pathname === '/my' || pathname === '/my-review-history' || pathname === '/liked-reviews';
             return (
               <View style={styles.tabContainer}>
                 <View style={styles.iconContainer}>
@@ -143,6 +143,12 @@ export default function TabLayout() {
       {/* 작성한 후기 내역 화면 (마이페이지에서 이동) */}
       <Tabs.Screen
         name="my-review-history"
+        options={{ href: null, headerShown: false }}
+      />
+
+      {/* 찜한 리뷰 내역 화면 (마이페이지에서 이동) */}
+      <Tabs.Screen
+        name="liked-reviews"
         options={{ href: null, headerShown: false }}
       />
     </Tabs>

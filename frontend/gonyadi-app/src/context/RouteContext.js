@@ -10,14 +10,36 @@ export const RouteProvider = ({ children }) => {
   // 저장된 경로 (서버에서 불러오기 전엔 빈 상태)
   const [allRoutes, setAllRoutes] = useState([]);
 
-  // 작성된 리뷰 목록 (초기에는 빈 상태)
+  // 작성된 리뷰 목록
   const [reviews, setReviews] = useState([]);
+
+  // 좋아요 누른 리뷰 목록 (전역 상태) { reviewId: boolean }
+  const [likedReviews, setLikedReviews] = useState({});
+
+  // 앱 시작 시 AsyncStorage에서 찜 데이터 복원
+  useEffect(() => {
+    const loadLiked = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('liked_reviews');
+        if (saved) setLikedReviews(JSON.parse(saved));
+      } catch (e) {
+        console.error('찜 데이터 로드 실패:', e);
+      }
+    };
+    loadLiked();
+  }, []);
 
   const loadRouteData = async () => {
     try {
-      const [serverFolders, serverRoutes] = await Promise.all([
+      const { apiClient } = require('../api/apiClient');
+      const { fetchReviews } = require('../api/reviewApi');
+
+      // 1. 서버 데이터 병렬 호출
+      const [serverFolders, serverRoutes, allServerReviews, userProfile] = await Promise.all([
         getFolders(),
-        getMyRoutes()
+        getMyRoutes(),
+        fetchReviews().catch(() => []),
+        apiClient('/api/v1/auth/me').catch(() => null)
       ]);
       
       if (serverFolders && serverFolders.length > 0) {
@@ -40,6 +62,23 @@ export const RouteProvider = ({ children }) => {
       } else {
         setAllRoutes([]);
       }
+
+      // 내 리뷰 필터링 및 셋팅
+      if (allServerReviews && userProfile) {
+        const myReviews = allServerReviews.filter(r => r.user_id === userProfile.user_id || r.author === userProfile.user_nickname);
+        // 포맷을 기존 앱 구조에 맞게 (필요 시) 변환
+        const formattedMyReviews = myReviews.map(r => ({
+          id: r.review_pk,
+          routeId: r.itinerary_id,
+          title: r.title,
+          content: r.preview_comment || '내용이 없습니다.',
+          thumbnail: r.thumbnail
+        }));
+        setReviews(formattedMyReviews);
+      } else {
+        setReviews([]);
+      }
+
     } catch (error) {
       console.error('초기 데이터 로딩 실패:', error);
     }
@@ -56,10 +95,16 @@ export const RouteProvider = ({ children }) => {
     loadIfAuthenticated();
   }, []);
 
-  const clearRouteData = () => {
+  const clearRouteData = async () => {
     setFolders([]);
     setAllRoutes([]);
     setReviews([]);
+    setLikedReviews({});
+    try {
+      await AsyncStorage.removeItem('liked_reviews');
+    } catch (e) {
+      console.error('찜 데이터 삭제 실패:', e);
+    }
   };
 
   const toggleFavorite = (id) => {
@@ -113,8 +158,28 @@ export const RouteProvider = ({ children }) => {
     setReviews(prev => [review, ...prev]);
   };
 
+  const toggleLikedReview = async (reviewId) => {
+    const updated = {
+      ...likedReviews,
+      [reviewId]: !likedReviews[reviewId]
+    };
+    // false인 항목 제거 (정리)
+    if (!updated[reviewId]) delete updated[reviewId];
+    setLikedReviews(updated);
+    try {
+      await AsyncStorage.setItem('liked_reviews', JSON.stringify(updated));
+    } catch (e) {
+      console.error('찜 데이터 저장 실패:', e);
+    }
+  };
+
   return (
-    <RouteContext.Provider value={{ folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder, reviews, addReview, loadRouteData, clearRouteData }}>
+    <RouteContext.Provider value={{ 
+      folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder, 
+      reviews, addReview, setReviews,
+      likedReviews, toggleLikedReview,
+      loadRouteData, clearRouteData 
+    }}>
       {children}
     </RouteContext.Provider>
   );

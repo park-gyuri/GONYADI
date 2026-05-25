@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
-from src.schemas.user_schema import UserCreate, UserLogin
+from src.schemas.user_schema import UserCreate, UserLogin, UserUpdate
 from src.core.security import verify_password, create_access_token, create_refresh_token, verify_access_token, get_current_user
 import src.crud.user_crud as user_crud
 import random
@@ -167,4 +167,21 @@ def get_me(current_user: dict = Depends(get_current_user)):
         "user_nickname": current_user.user_nickname,
         "user_email": current_user.user_email
     }
-
+
+@router.put("/me")
+def update_me(
+    user_update: UserUpdate, 
+    current_user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """현재 로그인한 유저의 정보를 수정합니다."""
+    update_data = user_update.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="수정할 정보가 없습니다.")
+        
+    updated_user = user_crud.update_user(current_user, update_data, session)
+    return {
+        "message": "프로필이 성공적으로 업데이트 되었습니다.",
+        "user_nickname": updated_user.user_nickname
+    }
+

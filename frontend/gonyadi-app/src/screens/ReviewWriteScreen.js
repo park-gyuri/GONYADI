@@ -77,31 +77,34 @@ const ReviewWriteScreen = () => {
       return;
     }
 
-    const newReview = {
-      id: Date.now(),
-      title: mainTitle,
-      content: Object.values(comments)[0] || '내용 없음',
-      thumbnail: Object.values(photos)[0]?.[0] || null,
-      routeId: id,
-      ratings,
-      comments,
-      photos,
-      date: new Date().toISOString().split('T')[0],
-    };
-
     try {
-      await createReview({
+      const response = await createReview({
         itinerary_id: Number(id),
         title: mainTitle,
         ratings,
         comments,
         photos,
       });
+
+      addReview({
+        id: response.review_pk || Date.now(),
+        routeId: response.itinerary_id || id,
+        title: mainTitle,
+        content: Object.values(comments)[0] || '내용 없음',
+        thumbnail: Object.values(photos)[0]?.[0] || null
+      });
+
     } catch (e) {
       console.error('[ReviewWrite] DB 저장 실패, 로컬에만 저장됩니다:', e.message);
+      // Fallback
+      addReview({
+        id: Date.now(),
+        routeId: id,
+        title: mainTitle,
+        content: Object.values(comments)[0] || '내용 없음',
+        thumbnail: Object.values(photos)[0]?.[0] || null
+      });
     }
-
-    addReview(newReview);
     setSaveModalVisible(false);
     router.replace('/review');
   };
@@ -139,10 +142,13 @@ const ReviewWriteScreen = () => {
 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
         {/* 제목 입력 */}
+        <View style={styles.sectionTitleContainer}>
+          <Text style={styles.sectionTitle}>[제목 작성]</Text>
+        </View>
         <View style={styles.mainTitleContainer}>
           <TextInput
             style={styles.mainTitleInput}
-            placeholder="제목을 입력하세요"
+            placeholder="제목을 입력하세요."
             placeholderTextColor="#888"
             value={mainTitle}
             onChangeText={setMainTitle}
@@ -167,6 +173,9 @@ const ReviewWriteScreen = () => {
         )}
 
         {/* 선택된 일차의 장소 목록 */}
+        <View style={styles.sectionTitleContainer}>
+          <Text style={styles.sectionTitle}>[후기 작성]</Text>
+        </View>
         <View style={styles.listContainer}>
           {currentDayPlaces.map((item, index) => {
             const isLast = index === currentDayPlaces.length - 1;
@@ -175,9 +184,6 @@ const ReviewWriteScreen = () => {
 
             return (
               <View key={placeId} style={styles.rowContainer}>
-                <View style={styles.timelineLeft}>
-                  <View style={styles.timelineLine} />
-                </View>
                 <View style={[styles.contentRight, isLast && styles.contentRightLast]}>
                   <View style={styles.placeHeader}>
                     <MarkerIcon width={24} height={24} style={{ marginRight: 8 }} />
@@ -262,13 +268,13 @@ const styles = StyleSheet.create({
   dayTabText: { fontSize: 14, color: '#888', fontWeight: '600' },
   dayTabTextActive: { color: '#FFFFFF' },
 
+  sectionTitleContainer: { paddingHorizontal: 16, marginTop: 10, marginBottom: 5 },
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#43B0AB' },
+
   listContainer: { paddingHorizontal: 10 },
   rowContainer: { flexDirection: 'row' },
 
-  timelineLeft: { width: 5, alignItems: 'center' },
-  timelineLine: { flex: 1, width: 2, backgroundColor: '#444' },
-
-  contentRight: { flex: 1, paddingLeft: 10, paddingBottom: 30 },
+  contentRight: { flex: 1, paddingLeft: 6, paddingBottom: 30 },
   contentRightLast: { paddingBottom: 0 },
 
   placeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, flexWrap: 'wrap', gap: 8 },

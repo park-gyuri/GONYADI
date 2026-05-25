@@ -1,43 +1,57 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useRoutes } from '../context/RouteContext';
-import ReviewupdateIcon from '../components/icons/reviewupdateIcon';
-import { Alert } from 'react-native';
+import { fetchReviews } from '../api/reviewApi';
 
-const MyReviewHistoryScreen = () => {
+const LikedReviewsScreen = () => {
   const router = useRouter();
-  const { reviews } = useRoutes();
+  const { likedReviews } = useRoutes();
+  const [allReviews, setAllReviews] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleUpdateOptions = (reviewId) => {
-    Alert.alert('후기 관리', '원하시는 작업을 선택하세요.', [
-      { text: '취소', style: 'cancel' },
-      { text: '수정', onPress: () => Alert.alert('안내', '수정 기능은 곧 업데이트 될 예정입니다.') }, // TODO: 실제 수정 화면 연동
-      { text: '삭제', style: 'destructive', onPress: () => Alert.alert('안내', '삭제가 완료되었습니다. (임시)') } // TODO: 삭제 연동
-    ]);
-  };
+  useFocusEffect(useCallback(() => {
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const data = await fetchReviews();
+        setAllReviews(data || []);
+      } catch (e) {
+        console.error('좋아요 후기 불러오기 실패:', e.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []));
+
+  // 전역 상태에 좋아요 표시된 항목만 필터링
+  const myLikedReviews = allReviews.filter(r => likedReviews[r.review_pk]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-
       {/* 1. 상단 타이틀 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.push('/my')}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>작성한 후기 내역</Text>
+        <Text style={styles.headerTitle}>찜한 리뷰 내역</Text>
         <View style={styles.backButton} />
       </View>
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {reviews.length > 0 ? (
-          reviews.map((review) => (
+        {isLoading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color="#43B0AB" />
+          </View>
+        ) : myLikedReviews.length > 0 ? (
+          myLikedReviews.map((review) => (
             <TouchableOpacity
-              key={review.id}
+              key={review.review_pk}
               style={styles.reviewCard}
               activeOpacity={0.9}
-              onPress={() => router.push({ pathname: '/review-detail', params: { id: review.id, type: 'db', from: '/my-review-history' } })}
+              onPress={() => router.push({ pathname: '/review-detail', params: { id: review.review_pk, type: 'db', from: '/liked-reviews' } })}
             >
               <View style={styles.imageSection}>
                 {review.thumbnail ? (
@@ -50,24 +64,18 @@ const MyReviewHistoryScreen = () => {
               <View style={styles.textSection}>
                 <View style={styles.titleRow}>
                   <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
-                  <TouchableOpacity onPress={() => handleUpdateOptions(review.id)} style={styles.updateIconBtn}>
-                    <ReviewupdateIcon width={24} height={24} />
-                  </TouchableOpacity>
                 </View>
-                <Text style={styles.reviewContent} numberOfLines={2}>{review.content}</Text>
+                <Text style={styles.reviewContent} numberOfLines={2}>{review.preview_comment}</Text>
               </View>
             </TouchableOpacity>
           ))
         ) : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 }}>
-            <Text style={{ color: '#999' }}>작성한 후기가 없습니다.</Text>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>찜한 리뷰가 없습니다.</Text>
           </View>
         )}
-
-        {/* 하단 여백 */}
         <View style={{ height: 120 }} />
       </ScrollView>
-
     </SafeAreaView>
   );
 };
@@ -130,7 +138,10 @@ const styles = StyleSheet.create({
   reviewTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#111', marginRight: 10 },
   updateIconBtn: { padding: 4 },
   reviewContent: { fontSize: 13, color: '#666', lineHeight: 18 },
+
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 150 },
+  emptyText: { color: '#999', fontSize: 15, textAlign: 'center' },
 });
 
 
-export default MyReviewHistoryScreen;
+export default LikedReviewsScreen;

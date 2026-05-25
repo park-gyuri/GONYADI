@@ -10,3 +10,6 @@ class UserCreate(SQLModel):
 class UserLogin(SQLModel):
     user_id:       str
     user_password: str = Field(max_length=72)  
+from typing import Optional
+class UserUpdate(SQLModel):
+    user_nickname: Optional[str] = None
