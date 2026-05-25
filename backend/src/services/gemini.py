@@ -15,8 +15,13 @@ def get_gemini_places(prompt: str) -> list[DaySchedule]:
 2. 구체적 명소 선정: 뭉뚱그린 표현 대신 구체적인 장소명을 추천해.
 3. 각 장소마다 name, lat, lng, reason, duration, category 를 반드시 포함해.
 4. 반드시 프롬프트에 명시된 일수(N일)만큼 day 필드를 나눠서 반환해. (1일차 → day:1, 2일차 → day:2 ...)
-5. 각 일차(day)에 3~5개의 장소를 배정하고, 하루 동선이 자연스럽도록 인접한 장소들을 묶어서 배치해.
-6. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해."""
+5. 각 일차(day)에 4~5개의 장소를 배정하고, 하루 동선이 자연스럽도록 인접한 장소들을 묶어서 배치해.
+6. 만약 프롬프트에 [현재 일정]이 제공되었다면, 사용자의 [상세 요청]을 반영하되 언급되지 않은 기존 장소는 순서와 내용을 최대한 그대로 유지해.
+
+[현실적인 하루 일정 구성 규칙]
+7. 하루 구조: 아침 식사 → 오전 활동(테마/관광) → 점심 식사 → 오후 활동 1~2개 → 저녁 식사 → 저녁 활동(선택)
+8. 동일 유형 장소(스파·온천 등)는 하루 1개로 제한. 테마 장소 최대 1~2개.
+9. category 필드: 식사 장소는 '맛집', 카페는 '카페', 관광지는 '관광명소'로 명확히 구분해."""
 
     try:
         response = client.models.generate_content(
@@ -26,6 +31,7 @@ def get_gemini_places(prompt: str) -> list[DaySchedule]:
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
                 response_schema=list[DaySchedule],
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         result: list[DaySchedule] = response.parsed or []
@@ -64,7 +70,11 @@ def get_gemini_curated_places(
 2. 리스트에 없는 place_pk를 절대 출력하지 마.
 3. 새로운 장소 이름이나 좌표를 만들어내지 마.
 4. place_pk, order, reason, duration 필드만 반환해.
-5. order는 1부터 시작하는 방문 순서야."""
+5. order는 1부터 시작하는 방문 순서야.
+
+[현실적인 일정 구성 규칙]
+6. 하루 구조: 아침 식사 → 오전 활동(테마/관광) → 점심 식사 → 오후 활동 1~2개 → 저녁 식사 → 저녁 활동(선택)
+7. 동일 유형 장소(스파·온천 등)는 하루 1개로 제한. 테마 장소 60% + 식사·보조 40% 비율 유지."""
 
     try:
         response = client.models.generate_content(
@@ -74,6 +84,7 @@ def get_gemini_curated_places(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
                 response_schema=list[CuratedPlaceResult],
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         curated: list[CuratedPlaceResult] = response.parsed or []
@@ -115,6 +126,116 @@ def get_gemini_curated_places(
         f"LLM 반환 {len(curated)}개 → 검증 후 {len(results)}개"
     )
     return results
+
+
+# ── [RAG] Step 3-2: AI 검토 및 보정 ─────────────────────────────────────────
+def critique_and_revise_itinerary(
+    places: list[PlaceResult],
+    candidates: list[PlaceCandidate],
+    total_days: int,
+) -> list[PlaceResult]:
+    """
+    1차 큐레이션 결과를 Gemini가 스스로 검토하고 문제가 있으면 수정한다.
+
+    검토 항목:
+    - 동일 유형 장소 중복 (족욕샵 + 목욕탕 등)
+    - 식사 장소 미포함
+    - 비현실적 하루 동선
+
+    문제 없으면 원본 그대로, 있으면 후보 풀 내에서 교체해 반환.
+    """
+    if not places or not candidates:
+        return places
+
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    current_itinerary = "\n".join(
+        f"{i+1}. place_pk={next((c.place_pk for c in candidates if c.name == p.name), '?')} "
+        f"[{p.category}] {p.name} ({p.duration}분)"
+        for i, p in enumerate(places)
+    )
+    candidate_lines = "\n".join(
+        f"  {c.place_pk}|{c.name}|{c.category}|{round(c.distance_km, 2)}km"
+        for c in candidates
+    )
+    valid_pks_str = ", ".join(str(c.place_pk) for c in candidates)
+
+    prompt = f"""
+당신은 여행 일정 품질 검토 전문가입니다.
+아래 [{total_days}일 여행 일정]을 검토하고, 문제가 있으면 [검증된 장소 후보] 내에서 수정하십시오.
+
+[현재 일정]
+{current_itinerary}
+
+[검증된 장소 후보] (place_pk|이름|카테고리|거리)
+{candidate_lines}
+
+[검토 기준 — 하나라도 해당하면 수정 필요]
+1. 동일하거나 유사한 유형의 장소가 연속으로 배치되어 있는가? (족욕샵→목욕탕, 식당→식당 등)
+2. 하루 일정이 아래 구조를 따르지 않는가?
+   아침 식사 → 오전 활동 → 점심 식사 → 오후 활동(1~2개) → 저녁 식사 → 저녁 활동(선택)
+
+[수정 규칙]
+- 유효한 place_pk: [{valid_pks_str}]
+- 반드시 위 후보에 있는 place_pk만 사용하십시오.
+- 문제 없으면 현재 일정의 place_pk를 순서 그대로 반환하십시오.
+- 문제 있으면 연속된 같은 유형 장소 중 하나를 다른 카테고리 장소로 교체하거나 순서를 재배치하십시오.
+- place_pk, order, reason, duration 필드만 반환하십시오.
+""".strip()
+
+    system_instruction = """너는 여행 일정 품질 검토자야.
+주어진 일정의 문제점을 판단하고, [검증된 장소 후보] 안에서만 수정해.
+절대로 후보에 없는 place_pk를 만들어내지 마."""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=list[CuratedPlaceResult],
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        revised: list[CuratedPlaceResult] = response.parsed or []
+    except Exception as e:
+        print(f"[AI 검토] Gemini 오류 → 원본 유지: {e}")
+        return places
+
+    candidate_map: dict[int, PlaceCandidate] = {c.place_pk: c for c in candidates}
+    valid_pks = set(candidate_map.keys())
+    revised_results: list[PlaceResult] = []
+    seen_pks: set[int] = set()
+
+    for item in sorted(revised, key=lambda x: x.order):
+        if item.place_pk not in valid_pks or item.place_pk in seen_pks:
+            print(f"[AI 검토] 허위/중복 place_pk={item.place_pk} 제거")
+            continue
+        seen_pks.add(item.place_pk)
+        cand = candidate_map[item.place_pk]
+        revised_results.append(PlaceResult(
+            name=cand.name,
+            lat=cand.lat,
+            lng=cand.lng,
+            reason=item.reason,
+            duration=item.duration,
+            category=cand.category,
+        ))
+
+    if not revised_results:
+        print("[AI 검토] 수정 결과 없음 → 원본 유지")
+        return places
+
+    original_names = [p.name for p in places]
+    revised_names  = [p.name for p in revised_results]
+    if original_names != revised_names:
+        print(f"[AI 검토] 일정 보정 완료: {original_names} → {revised_names}")
+    else:
+        print("[AI 검토] 문제 없음 — 원본 유지")
+
+    return revised_results
+
 
 '''
 import os

@@ -12,6 +12,7 @@ API 레이어(recommend_api.py)에서 이 함수 하나만 호출하면
 "DB 후보 풀 + 필터링 완료된 PlaceCandidate 리스트"를 받을 수 있다.
 """
 
+import asyncio
 import httpx
 import os
 from sqlmodel import Session
@@ -21,6 +22,11 @@ from src.services.spatial_filter import (
     spatial_filter,
     auto_radius_km,
     auto_max_pair_dist_km,
+)
+from src.services.tour_api import (
+    fetch_tourapi_nearby,
+    fetch_tourapi_pet,
+    fetch_tourapi_barrier_free,
 )
 import src.crud.place_crud as place_crud
 
@@ -160,8 +166,10 @@ async def retrieve_and_filter_candidates(
     max_pair = auto_max_pair_dist_km(transport_names)
 
     # ── Step 1: DB-First Retrieval ────────────────────────────────────────────
-    # 테마에서 DB category 필터 추출
+    # 테마 카테고리 + 현실적 일정을 위한 필수 카테고리(맛집) 항상 포함
     categories = [THEME_TO_CATEGORY[t] for t in theme_names if t in THEME_TO_CATEGORY]
+    if categories and "맛집" not in categories:
+        categories.append("맛집")
     candidates = place_crud.retrieve_candidates_by_location(
         lat=req.center_lat,
         lng=req.center_lng,
@@ -170,25 +178,60 @@ async def retrieve_and_filter_candidates(
         session=session,
     )
 
-    # ── Step 4: Fallback — 후보 부족 시 Google Places로 보충 ──────────────────
-    if len(candidates) < MIN_CANDIDATES:
-        print(
-            f"[RAG] DB 후보 {len(candidates)}개 < MIN({MIN_CANDIDATES}) "
-            f"→ Google Places Fallback 실행 (반경 {radius_km}km)"
-        )
-        # 테마에서 Google Places 타입 추출
+    # ── Step 4: Google Places + TourAPI 보충 ─────────────────────────────────
+    # 특수 조건(휠체어·반려동물)이 있으면 DB 후보 수와 무관하게 항상 TourAPI 호출.
+    # DB에 접근성 정보가 없으므로 조건 선택 시 반드시 TourAPI로 검증된 데이터 확보.
+    condition_values = [c.value for c in req.conditions]
+    has_special_condition = bool(condition_values)
+    need_fallback = len(candidates) < MIN_CANDIDATES or has_special_condition
+
+    if need_fallback:
+        reason = []
+        if len(candidates) < MIN_CANDIDATES:
+            reason.append(f"DB 후보 {len(candidates)}개 < MIN({MIN_CANDIDATES})")
+        if has_special_condition:
+            reason.append(f"특수 조건 {condition_values}")
+        print(f"[RAG] {' + '.join(reason)} → Google Places + TourAPI 실행 (반경 {radius_km}km)")
+
+        radius_m = radius_km * 1000
+
+        # Google Places 타입 결정 — restaurant 항상 포함
         google_types = list({
             THEME_TO_GOOGLE_TYPE[t]
             for t in theme_names
             if t in THEME_TO_GOOGLE_TYPE
-        }) or ["tourist_attraction"]
+        } | {"restaurant"}) or ["tourist_attraction", "restaurant"]
 
-        fetched = await _fetch_google_places_nearby(
-            lat=req.center_lat,
-            lng=req.center_lng,
-            radius_m=radius_km * 1000,
-            included_types=google_types,
-            max_count=20,
+        # TourAPI 조건별 선택 (반려동물 > 무장애 > 일반)
+        if "반려동물 동반" in condition_values:
+            tour_task = fetch_tourapi_pet(req.center_lat, req.center_lng, radius_m)
+        elif "휠체어" in condition_values:
+            tour_task = fetch_tourapi_barrier_free(req.center_lat, req.center_lng, radius_m)
+        else:
+            tour_task = fetch_tourapi_nearby(req.center_lat, req.center_lng, radius_m, theme_names)
+
+        # Google Places와 TourAPI 병렬 실행
+        google_result, tour_result = await asyncio.gather(
+            _fetch_google_places_nearby(
+                lat=req.center_lat,
+                lng=req.center_lng,
+                radius_m=radius_m,
+                included_types=google_types,
+                max_count=20,
+            ),
+            tour_task,
+            return_exceptions=True,
+        )
+
+        fetched: list[dict] = []
+        if isinstance(google_result, list):
+            fetched.extend(google_result)
+        if isinstance(tour_result, list):
+            fetched.extend(tour_result)
+
+        print(
+            f"[RAG] Google Places {len(google_result) if isinstance(google_result, list) else 0}개 + "
+            f"TourAPI {len(tour_result) if isinstance(tour_result, list) else 0}개 → 합계 {len(fetched)}개"
         )
 
         if fetched:
@@ -200,7 +243,7 @@ async def retrieve_and_filter_candidates(
                 lat=req.center_lat,
                 lng=req.center_lng,
                 radius_km=radius_km,
-                categories=None,   # 재조회 시 카테고리 필터 해제해 최대한 확보
+                categories=None,
                 session=session,
             )
 

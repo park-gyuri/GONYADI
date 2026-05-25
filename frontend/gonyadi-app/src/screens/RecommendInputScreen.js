@@ -90,6 +90,58 @@ const RecommendInputScreen = () => {
 
     setIsLoading(true);
     try {
+      // 지역명 → 좌표 변환 (RAG 파이프라인 활성화용)
+      // 백엔드 Places API를 사용하므로 프론트는 주요 지역 테이블로 빠르게 처리
+      const REGION_COORDS = {
+        '서울': { lat: 37.5665, lng: 126.9780 }, '부산': { lat: 35.1796, lng: 129.0756 },
+        '대구': { lat: 35.8714, lng: 128.6014 }, '인천': { lat: 37.4563, lng: 126.7052 },
+        '광주': { lat: 35.1595, lng: 126.8526 }, '대전': { lat: 36.3504, lng: 127.3845 },
+        '울산': { lat: 35.5384, lng: 129.3114 }, '세종': { lat: 36.4800, lng: 127.2890 },
+        '제주': { lat: 33.4996, lng: 126.5312 }, '경주': { lat: 35.8562, lng: 129.2247 },
+        '전주': { lat: 35.8242, lng: 127.1480 }, '여수': { lat: 34.7604, lng: 127.6622 },
+        '강릉': { lat: 37.7519, lng: 128.8761 }, '속초': { lat: 38.2070, lng: 128.5918 },
+        '춘천': { lat: 37.8747, lng: 127.7342 }, '수원': { lat: 37.2636, lng: 127.0286 },
+        '포항': { lat: 36.0190, lng: 129.3435 }, '통영': { lat: 34.8544, lng: 128.4330 },
+        '거제': { lat: 34.8800, lng: 128.6211 }, '안동': { lat: 36.5684, lng: 128.7294 },
+        '목포': { lat: 34.8118, lng: 126.3922 }, '순천': { lat: 34.9506, lng: 127.4873 },
+        '군산': { lat: 35.9676, lng: 126.7369 }, '경기': { lat: 37.2750, lng: 127.0094 },
+        '강원': { lat: 37.8228, lng: 128.1555 }, '충북': { lat: 36.6357, lng: 127.4913 },
+        '충남': { lat: 36.5184, lng: 126.8000 }, '전북': { lat: 35.8200, lng: 127.1089 },
+        '전남': { lat: 34.8679, lng: 126.9910 }, '경북': { lat: 36.4919, lng: 128.8889 },
+        '경남': { lat: 35.4606, lng: 128.2132 }, '평창': { lat: 37.3706, lng: 128.3904 },
+        '가평': { lat: 37.8314, lng: 127.5100 }, '남해': { lat: 34.8378, lng: 127.8925 },
+        '보령': { lat: 36.3333, lng: 126.6127 }, '태안': { lat: 36.7455, lng: 126.2980 },
+        '담양': { lat: 35.3214, lng: 126.9881 }, '하동': { lat: 35.0678, lng: 127.7514 },
+      };
+
+      const matchKey = Object.keys(REGION_COORDS).find(k => destination.includes(k));
+      let center_lat = matchKey ? REGION_COORDS[matchKey].lat : undefined;
+      let center_lng = matchKey ? REGION_COORDS[matchKey].lng : undefined;
+
+      if (matchKey) {
+        console.log(`[지역 좌표] ${destination} → (${center_lat}, ${center_lng})`);
+      } else {
+        // 하드코딩 테이블 미매칭 → Geocoding API 호출
+        console.log(`[지역 좌표] '${destination}' 매핑 없음 → Geocoding API 시도`);
+        try {
+          const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+          const geocodeResp = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination + ' 한국')}&language=ko&key=${apiKey}`
+          );
+          const geocodeData = await geocodeResp.json();
+          if (geocodeData.status === 'OK' && geocodeData.results.length > 0) {
+            const loc = geocodeData.results[0].geometry.location;
+            center_lat = loc.lat;
+            center_lng = loc.lng;
+            console.log(`[Geocoding] '${destination}' → (${center_lat}, ${center_lng})`);
+          } else {
+            console.warn(`[Geocoding] '${destination}' 변환 실패 (${geocodeData.status}) → 백엔드 폴백`);
+          }
+        } catch (geoErr) {
+          console.warn(`[Geocoding] 호출 오류 → 백엔드 폴백:`, geoErr.message);
+        }
+      }
+
       // 프론트엔드 UI 태그를 백엔드 스키마 Enum으로 변환
       const mappedTags = selectedTags.map(tag => {
         if (tag === '음식') return '맛집';
@@ -104,6 +156,8 @@ const RecommendInputScreen = () => {
 
       const formData = {
         region: destination,
+        center_lat,
+        center_lng,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
         nights: nights ? parseInt(nights, 10) : undefined,
