@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchTopLikedReviews } from '../api/reviewApi';
@@ -25,8 +25,9 @@ const MainScreen = () => {
     loadHistory();
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const loadTop = async () => {
+      setLoadingTop(true);
       try {
         const data = await fetchTopLikedReviews();
         setTopReviews(data || []);
@@ -37,7 +38,7 @@ const MainScreen = () => {
       }
     };
     loadTop();
-  }, []);
+  }, []));
 
   const saveHistoryToStorage = async (newHistory) => {
     try {

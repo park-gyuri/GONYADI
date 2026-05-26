@@ -20,7 +20,7 @@ if not DATABASE_URL:
 _is_remote = not any(h in DATABASE_URL for h in ["localhost", "127.0.0.1"])
 connect_args = {"sslmode": "require"} if _is_remote else {}
 
-engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
+engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args, pool_pre_ping=True)
 
 def get_session():
     with Session(engine) as session:
