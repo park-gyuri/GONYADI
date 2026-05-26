@@ -42,6 +42,9 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
 
   const defaultHeaders = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   };
 
   // 저장된 토큰이 있다면 가져와서 헤더에 추가

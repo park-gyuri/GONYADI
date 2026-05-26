@@ -183,11 +183,19 @@ export const RouteProvider = ({ children }) => {
   };
 
   const addReview = (review) => {
-    setReviews(prev => [review, ...prev]);
+    // API 응답(review_pk)을 프론트엔드 상태 규격(id)으로 변환
+    const formatted = {
+      id: review.review_pk,
+      routeId: review.itinerary_id,
+      title: review.title,
+      content: review.preview_comment || '내용이 없습니다.',
+      thumbnail: review.thumbnail
+    };
+    setReviews(prev => [formatted, ...prev]);
   };
 
   const deleteReviewFromContext = (reviewId) => {
-    setReviews(prev => prev.filter(r => r.id !== reviewId));
+    setReviews(prev => prev.filter(r => String(r.id) !== String(reviewId) && String(r.review_pk) !== String(reviewId)));
   };
 
   const updateReviewInContext = (reviewId, updatedData) => {

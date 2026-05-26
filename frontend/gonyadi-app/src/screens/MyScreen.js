@@ -93,11 +93,19 @@ const MyScreen = () => {
           text: "탈퇴하기",
           style: "destructive",
           onPress: async () => {
-            // API 연결 시 백엔드 탈퇴 로직 호출
-            await AsyncStorage.clear();
-            clearRouteData();
-            setAccountModalVisible(false);
-            router.replace('/login');
+            try {
+              // 백엔드 탈퇴 API 호출
+              await apiClient('/api/v1/auth/me', { method: 'DELETE' });
+              
+              await AsyncStorage.clear();
+              clearRouteData();
+              setAccountModalVisible(false);
+              router.replace('/login');
+              Alert.alert('안내', '계정이 정상적으로 탈퇴되었습니다.');
+            } catch (error) {
+              console.error('계정 탈퇴 실패:', error);
+              Alert.alert('오류', '계정 탈퇴 처리 중 문제가 발생했습니다.');
+            }
           }
         }
       ]
