@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
+import ReviewupdateIcon from '../components/icons/reviewupdateIcon';
 import { useRoutes } from '../context/RouteContext';
 import { fetchReviewById, deleteReview as deleteReviewApi } from '../api/reviewApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +24,7 @@ const ReviewDetailScreen = () => {
   const { id, type, from } = useLocalSearchParams();
   const [selectedImageIndex, setSelectedImageIndex] = useState(null);
   const [allModalPhotos, setAllModalPhotos] = useState([]);
+  const [isDeleted, setIsDeleted] = useState(false);
   const [routeData, setRouteData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,12 +70,14 @@ const ReviewDetailScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setIsDeleted(true); // 페치 방지
               await deleteReviewApi(id);
               deleteReviewFromContext(Number(id));
               Alert.alert('완료', '후기가 삭제되었습니다.', [
                 { text: '확인', onPress: () => handleBack() }
               ]);
             } catch (e) {
+              setIsDeleted(false);
               Alert.alert('오류', '삭제에 실패했습니다: ' + e.message);
             }
           }
@@ -101,7 +105,10 @@ const ReviewDetailScreen = () => {
   };
 
   useEffect(() => {
-    if (!id) { setIsLoading(false); return; }
+    if (!id || isDeleted) {
+      setIsLoading(false);
+      return;
+    }
 
     const load = async () => {
       setIsLoading(true);
@@ -281,10 +288,10 @@ const ReviewDetailScreen = () => {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        {/* 본인 리뷰일 때만 메뉴 버튼 표시 */}
-        {isMyReview && (
-          <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={styles.menuButton}>
-            <Text style={styles.menuIcon}>⋮</Text>
+        {/* 수정/삭제 버튼 직접 노출 */}
+        {rawReviewData && (
+          <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={{ padding: 8 }}>
+            <ReviewupdateIcon width={24} height={24} color="#111" />
           </TouchableOpacity>
         )}
       </View>
@@ -301,6 +308,8 @@ const ReviewDetailScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrapper}>
@@ -435,7 +444,7 @@ const styles = StyleSheet.create({
 
   dropdownMenu: {
     position: 'absolute',
-    top: 100,
+    top: 60,
     right: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,

@@ -17,3 +17,18 @@ export const createReview = async (reviewData) => {
   });
   return response;
 };
+
+export const updateReview = async (reviewId, reviewData) => {
+  const response = await apiClient(`/api/v1/reviews/${reviewId}`, {
+    method: 'PUT',
+    body: JSON.stringify(reviewData),
+  });
+  return response;
+};
+
+export const deleteReview = async (reviewId) => {
+  const response = await apiClient(`/api/v1/reviews/${reviewId}`, {
+    method: 'DELETE',
+  });
+  return response;
+};

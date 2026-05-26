@@ -111,10 +111,12 @@ const ReviewWriteScreen = () => {
         });
 
         Alert.alert('완료', '후기가 수정되었습니다.', [
-          { text: '확인', onPress: () => {
-            setSaveModalVisible(false);
-            router.replace({ pathname: '/review-detail', params: { id: reviewId, type: 'db', from: '/my-review-history' } });
-          }}
+          {
+            text: '확인', onPress: () => {
+              setSaveModalVisible(false);
+              router.replace({ pathname: '/review-detail', params: { id: reviewId, type: 'db', from: '/my-review-history' } });
+            }
+          }
         ]);
       } else {
         // 새 작성 모드
@@ -181,10 +183,20 @@ const ReviewWriteScreen = () => {
   };
 
   // 대표 사진 토글
-  const toggleThumbnail = (placeId) => {
-    if (thumbnailPlaceId === placeId) {
+  const toggleThumbnail = (placeId, photoIndex) => {
+    if (thumbnailPlaceId === placeId && photoIndex === 0) {
       setThumbnailPlaceId(null);
     } else {
+      setPhotos(prev => {
+        const updated = { ...prev };
+        const list = [...(updated[placeId] || [])];
+        if (list.length > photoIndex) {
+          const selectedPhoto = list.splice(photoIndex, 1)[0];
+          list.unshift(selectedPhoto);
+          updated[placeId] = list;
+        }
+        return updated;
+      });
       setThumbnailPlaceId(placeId);
     }
   };
@@ -299,7 +311,7 @@ const ReviewWriteScreen = () => {
                               styles.thumbnailBadge,
                               isThumbnailPlace && idx === 0 && styles.thumbnailBadgeActive
                             ]}
-                            onPress={() => toggleThumbnail(placeId)}
+                            onPress={() => toggleThumbnail(placeId, idx)}
                           >
                             <Text style={[
                               styles.thumbnailBadgeText,
@@ -315,7 +327,7 @@ const ReviewWriteScreen = () => {
                             <Text style={styles.photoDeleteBtnText}>✕</Text>
                           </TouchableOpacity>
 
-                          <Image source={{ uri }} style={styles.attachedPhoto} resizeMode="cover" />
+                          <Image source={{ uri }} style={styles.attachedPhoto} resizeMode="contain" />
                         </View>
                       ))}
                     </ScrollView>
@@ -403,37 +415,37 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   attachedPhoto: {
-    width: 120,
-    height: 120,
+    width: 200,
+    height: 200,
     borderRadius: 12,
-    backgroundColor: '#EEE',
+    backgroundColor: '#F5F7FA',
   },
 
   // X 삭제 버튼
   photoDeleteBtn: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    top: 8,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.74)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
-  photoDeleteBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: 'bold' },
+  photoDeleteBtnText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
 
   // 대표 버튼
   thumbnailBadge: {
     position: 'absolute',
-    top: 4,
-    left: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
+    top: 8,
+    left: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 2,
     borderColor: '#CCC',
     zIndex: 10,
   },
@@ -441,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#43B0AB',
     borderColor: '#43B0AB',
   },
-  thumbnailBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#555' },
+  thumbnailBadgeText: { fontSize: 14, fontWeight: 'bold', color: '#555' },
   thumbnailBadgeTextActive: { color: '#FFFFFF' },
 
   addImageBtn: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: '#A0AAB5', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', marginBottom: 12 },

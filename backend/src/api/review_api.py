@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
-from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse
+from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview
 from src.crud import review_crud
 
 router = APIRouter()
@@ -33,3 +33,37 @@ def get_review(review_id: int, session: Session = Depends(get_session)):
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
+
+from src.schemas.review_schema import ReviewUpdate
+
+@router.put("/reviews/{review_id}", response_model=ReviewDetailResponse)
+def update_review(
+    review_id: int,
+    review_in: ReviewUpdate,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    review = review_crud.update_review(
+        session=session, 
+        review_id=review_id, 
+        review_in=review_in, 
+        user_id=current_user.user_pk
+    )
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found or not authorized")
+    return review_crud.get_review_by_id(session=session, review_id=review.review_pk)
+
+@router.delete("/reviews/{review_id}")
+def delete_review(
+    review_id: int,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    success = review_crud.delete_review(
+        session=session, 
+        review_id=review_id, 
+        user_id=current_user.user_pk
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Review not found or not authorized")
+    return {"message": "Review deleted successfully"}
