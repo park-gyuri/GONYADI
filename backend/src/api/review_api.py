@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
-from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview
+from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse
 from src.crud import review_crud
 
 router = APIRouter()
@@ -33,17 +33,3 @@ def get_review(review_id: int, session: Session = Depends(get_session)):
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
-
-@router.post("/reviews/{review_id}/like", status_code=200)
-def like_review(review_id: int, session: Session = Depends(get_session)):
-    review = review_crud.like_review(session=session, review_id=review_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    return {"like_count": review.like_count}
-
-@router.delete("/reviews/{review_id}/like", status_code=200)
-def unlike_review(review_id: int, session: Session = Depends(get_session)):
-    review = review_crud.unlike_review(session=session, review_id=review_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    return {"like_count": review.like_count}

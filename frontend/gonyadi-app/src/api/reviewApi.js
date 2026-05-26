@@ -17,15 +17,3 @@ export const createReview = async (reviewData) => {
   });
   return response;
 };
-
-export const likeReview = async (reviewId) => {
-  return await apiClient(`/api/v1/reviews/${reviewId}/like`, { method: 'POST' });
-};
-
-export const unlikeReview = async (reviewId) => {
-  return await apiClient(`/api/v1/reviews/${reviewId}/like`, { method: 'DELETE' });
-};
-
-export const fetchTopLikedReviews = async () => {
-  return await apiClient('/api/v1/reviews/top-liked', { method: 'GET' });
-};

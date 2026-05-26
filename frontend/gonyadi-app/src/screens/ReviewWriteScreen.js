@@ -8,12 +8,14 @@ import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import ReviewSaveModal from '../components/ReviewSaveModal';
 import { useRoutes } from '../context/RouteContext';
-import { createReview } from '../api/reviewApi';
+import { createReview, updateReview as updateReviewApi } from '../api/reviewApi';
 
 const ReviewWriteScreen = () => {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
-  const { allRoutes, addReview } = useRoutes();
+  const { id, editMode, reviewId, editTitle, editRatings, editComments, editPhotos, editThumbnailPlaceId } = useLocalSearchParams();
+  const { allRoutes, addReview, updateReviewInContext } = useRoutes();
+
+  const isEditMode = editMode === 'true';
 
   const selectedRoute = allRoutes.find(r => String(r.id) === String(id));
 
@@ -53,15 +55,27 @@ const ReviewWriteScreen = () => {
   const [comments, setComments] = useState({});
   const [photos, setPhotos] = useState({});
   const [mainTitle, setMainTitle] = useState('');
+  const [thumbnailPlaceId, setThumbnailPlaceId] = useState(null);
   const [isSaveModalVisible, setSaveModalVisible] = useState(false);
 
   useEffect(() => {
-    setRatings({});
-    setComments({});
-    setPhotos({});
-    setMainTitle(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
+    if (isEditMode) {
+      // 수정 모드: 기존 데이터로 초기화
+      setMainTitle(editTitle || '');
+      try { setRatings(JSON.parse(editRatings || '{}')); } catch { setRatings({}); }
+      try { setComments(JSON.parse(editComments || '{}')); } catch { setComments({}); }
+      try { setPhotos(JSON.parse(editPhotos || '{}')); } catch { setPhotos({}); }
+      setThumbnailPlaceId(editThumbnailPlaceId || null);
+    } else {
+      // 새 작성 모드
+      setRatings({});
+      setComments({});
+      setPhotos({});
+      setMainTitle(selectedRoute?.title ? `${selectedRoute.title} 후기` : '');
+      setThumbnailPlaceId(null);
+    }
     setSelectedDay(finalSchedule[0]?.day || 1);
-  }, [id, selectedRoute?.title]);
+  }, [id, selectedRoute?.title, isEditMode]);
 
   const currentDayPlaces = finalSchedule.find(d => d.day === selectedDay)?.places || [];
 
@@ -78,39 +92,102 @@ const ReviewWriteScreen = () => {
     }
 
     try {
-      const response = await createReview({
-        itinerary_id: Number(id),
-        title: mainTitle,
-        ratings,
-        comments,
-        photos,
-      });
+      if (isEditMode && reviewId) {
+        // 수정 모드
+        const response = await updateReviewApi(reviewId, {
+          title: mainTitle,
+          ratings,
+          comments,
+          photos,
+          thumbnail_place_id: thumbnailPlaceId,
+        });
 
-      addReview({
-        id: response.review_pk || Date.now(),
-        routeId: response.itinerary_id || id,
-        title: mainTitle,
-        content: Object.values(comments)[0] || '내용 없음',
-        thumbnail: Object.values(photos)[0]?.[0] || null
-      });
+        updateReviewInContext(Number(reviewId), {
+          title: mainTitle,
+          content: Object.values(comments).find(c => c) || '내용 없음',
+          thumbnail: thumbnailPlaceId && photos[thumbnailPlaceId]?.[0]
+            ? photos[thumbnailPlaceId][0]
+            : Object.values(photos).flat()[0] || null,
+        });
 
+        Alert.alert('완료', '후기가 수정되었습니다.', [
+          { text: '확인', onPress: () => {
+            setSaveModalVisible(false);
+            router.replace({ pathname: '/review-detail', params: { id: reviewId, type: 'db', from: '/my-review-history' } });
+          }}
+        ]);
+      } else {
+        // 새 작성 모드
+        const response = await createReview({
+          itinerary_id: Number(id),
+          title: mainTitle,
+          ratings,
+          comments,
+          photos,
+          thumbnail_place_id: thumbnailPlaceId,
+        });
+
+        addReview({
+          id: response.review_pk || Date.now(),
+          routeId: response.itinerary_id || id,
+          title: mainTitle,
+          content: Object.values(comments)[0] || '내용 없음',
+          thumbnail: thumbnailPlaceId && photos[thumbnailPlaceId]?.[0]
+            ? photos[thumbnailPlaceId][0]
+            : Object.values(photos)[0]?.[0] || null,
+        });
+
+        setSaveModalVisible(false);
+        router.replace('/review');
+      }
     } catch (e) {
-      console.error('[ReviewWrite] DB 저장 실패, 로컬에만 저장됩니다:', e.message);
-      // Fallback
-      addReview({
-        id: Date.now(),
-        routeId: id,
-        title: mainTitle,
-        content: Object.values(comments)[0] || '내용 없음',
-        thumbnail: Object.values(photos)[0]?.[0] || null
-      });
+      console.error('[ReviewWrite] 저장 실패:', e.message);
+      if (!isEditMode) {
+        // 새 작성 Fallback
+        addReview({
+          id: Date.now(),
+          routeId: id,
+          title: mainTitle,
+          content: Object.values(comments)[0] || '내용 없음',
+          thumbnail: Object.values(photos)[0]?.[0] || null,
+        });
+        setSaveModalVisible(false);
+        router.replace('/review');
+      } else {
+        Alert.alert('오류', '수정에 실패했습니다: ' + e.message);
+        setSaveModalVisible(false);
+      }
     }
-    setSaveModalVisible(false);
-    router.replace('/review');
   };
 
   const handleRating = (placeId, score) => setRatings(prev => ({ ...prev, [placeId]: score }));
   const handleCommentChange = (placeId, text) => setComments(prev => ({ ...prev, [placeId]: text }));
+
+  // 사진 삭제
+  const removePhoto = (placeId, photoIndex) => {
+    setPhotos(prev => {
+      const updated = { ...prev };
+      const list = [...(updated[placeId] || [])];
+      list.splice(photoIndex, 1);
+      if (list.length === 0) {
+        delete updated[placeId];
+        // 대표가 이 장소였으면 해제
+        if (thumbnailPlaceId === placeId) setThumbnailPlaceId(null);
+      } else {
+        updated[placeId] = list;
+      }
+      return updated;
+    });
+  };
+
+  // 대표 사진 토글
+  const toggleThumbnail = (placeId) => {
+    if (thumbnailPlaceId === placeId) {
+      setThumbnailPlaceId(null);
+    } else {
+      setThumbnailPlaceId(placeId);
+    }
+  };
 
   const pickImage = async (placeId) => {
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -120,21 +197,23 @@ const ReviewWriteScreen = () => {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
+      allowsMultipleSelection: true,
       quality: 0.8,
     });
-    if (!result.canceled) {
-      setPhotos(prev => ({ ...prev, [placeId]: [...(prev[placeId] || []), result.assets[0].uri] }));
+    if (!result.canceled && result.assets) {
+      const newUris = result.assets.map(asset => asset.uri);
+      setPhotos(prev => ({ ...prev, [placeId]: [...(prev[placeId] || []), ...newUris] }));
     }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/review-select-route')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => isEditMode ? router.back() : router.push('/review-select-route')} style={styles.backButton}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>후기를 작성하세요</Text>
+        <Text style={styles.headerTitle}>{isEditMode ? '후기 수정하기' : '후기를 작성하세요'}</Text>
         <TouchableOpacity style={styles.saveIconBtn} onPress={() => setSaveModalVisible(true)}>
           <DownloadIcon width={28} height={28} />
         </TouchableOpacity>
@@ -181,6 +260,8 @@ const ReviewWriteScreen = () => {
             const isLast = index === currentDayPlaces.length - 1;
             const placeId = item.id || `place_${item._gi ?? index}`;
             const currentRating = ratings[placeId] || 0;
+            const placePhotos = photos[placeId] || [];
+            const isThumbnailPlace = thumbnailPlaceId === placeId;
 
             return (
               <View key={placeId} style={styles.rowContainer}>
@@ -208,10 +289,34 @@ const ReviewWriteScreen = () => {
                     />
                   </View>
 
-                  {photos[placeId]?.length > 0 && (
+                  {placePhotos.length > 0 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-                      {photos[placeId].map((uri, idx) => (
-                        <Image key={idx} source={{ uri }} style={styles.attachedPhoto} />
+                      {placePhotos.map((uri, idx) => (
+                        <View key={idx} style={styles.photoWrapper}>
+                          {/* 대표 버튼 (왼쪽 상단) */}
+                          <TouchableOpacity
+                            style={[
+                              styles.thumbnailBadge,
+                              isThumbnailPlace && idx === 0 && styles.thumbnailBadgeActive
+                            ]}
+                            onPress={() => toggleThumbnail(placeId)}
+                          >
+                            <Text style={[
+                              styles.thumbnailBadgeText,
+                              isThumbnailPlace && idx === 0 && styles.thumbnailBadgeTextActive
+                            ]}>대표</Text>
+                          </TouchableOpacity>
+
+                          {/* X 삭제 버튼 (오른쪽 상단) */}
+                          <TouchableOpacity
+                            style={styles.photoDeleteBtn}
+                            onPress={() => removePhoto(placeId, idx)}
+                          >
+                            <Text style={styles.photoDeleteBtnText}>✕</Text>
+                          </TouchableOpacity>
+
+                          <Image source={{ uri }} style={styles.attachedPhoto} resizeMode="cover" />
+                        </View>
                       ))}
                     </ScrollView>
                   )}
@@ -293,7 +398,51 @@ const styles = StyleSheet.create({
   reviewInput: { fontSize: 14, color: '#333', textAlignVertical: 'top', height: '100%' },
 
   photoScroll: { flexDirection: 'row', marginBottom: 12 },
-  attachedPhoto: { width: 60, height: 60, borderRadius: 8, marginRight: 8, backgroundColor: '#EEE' },
+  photoWrapper: {
+    position: 'relative',
+    marginRight: 10,
+  },
+  attachedPhoto: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#EEE',
+  },
+
+  // X 삭제 버튼
+  photoDeleteBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  photoDeleteBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: 'bold' },
+
+  // 대표 버튼
+  thumbnailBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: '#CCC',
+    zIndex: 10,
+  },
+  thumbnailBadgeActive: {
+    backgroundColor: '#43B0AB',
+    borderColor: '#43B0AB',
+  },
+  thumbnailBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#555' },
+  thumbnailBadgeTextActive: { color: '#FFFFFF' },
 
   addImageBtn: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: '#A0AAB5', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', marginBottom: 12 },
   addImageText: { fontSize: 32, color: '#888', fontWeight: '300' },

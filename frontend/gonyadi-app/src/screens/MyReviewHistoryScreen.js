@@ -3,20 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useRoutes } from '../context/RouteContext';
-import ReviewupdateIcon from '../components/icons/reviewupdateIcon';
-import { Alert } from 'react-native';
 
 const MyReviewHistoryScreen = () => {
   const router = useRouter();
   const { reviews } = useRoutes();
-
-  const handleUpdateOptions = (reviewId) => {
-    Alert.alert('후기 관리', '원하시는 작업을 선택하세요.', [
-      { text: '취소', style: 'cancel' },
-      { text: '수정', onPress: () => Alert.alert('안내', '수정 기능은 곧 업데이트 될 예정입니다.') }, // TODO: 실제 수정 화면 연동
-      { text: '삭제', style: 'destructive', onPress: () => Alert.alert('안내', '삭제가 완료되었습니다. (임시)') } // TODO: 삭제 연동
-    ]);
-  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -41,19 +31,14 @@ const MyReviewHistoryScreen = () => {
             >
               <View style={styles.imageSection}>
                 {review.thumbnail ? (
-                  <Image source={{ uri: review.thumbnail }} style={styles.imagePlaceholder} />
+                  <Image source={{ uri: review.thumbnail }} style={styles.imagePlaceholder} resizeMode="cover" />
                 ) : (
                   <View style={styles.imagePlaceholder} />
                 )}
               </View>
 
               <View style={styles.textSection}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
-                  <TouchableOpacity onPress={() => handleUpdateOptions(review.id)} style={styles.updateIconBtn}>
-                    <ReviewupdateIcon width={24} height={24} />
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
                 <Text style={styles.reviewContent} numberOfLines={2}>{review.content}</Text>
               </View>
             </TouchableOpacity>
@@ -121,14 +106,7 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 16,
   },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  reviewTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#111', marginRight: 10 },
-  updateIconBtn: { padding: 4 },
+  reviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 8 },
   reviewContent: { fontSize: 13, color: '#666', lineHeight: 18 },
 });
 

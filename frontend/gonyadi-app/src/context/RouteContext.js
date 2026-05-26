@@ -158,6 +158,16 @@ export const RouteProvider = ({ children }) => {
     setReviews(prev => [review, ...prev]);
   };
 
+  const deleteReviewFromContext = (reviewId) => {
+    setReviews(prev => prev.filter(r => r.id !== reviewId));
+  };
+
+  const updateReviewInContext = (reviewId, updatedData) => {
+    setReviews(prev => prev.map(r => 
+      r.id === reviewId ? { ...r, ...updatedData } : r
+    ));
+  };
+
   const toggleLikedReview = async (reviewId) => {
     const isCurrentlyLiked = !!likedReviews[reviewId];
     const updated = { ...likedReviews, [reviewId]: !isCurrentlyLiked };
@@ -179,7 +189,7 @@ export const RouteProvider = ({ children }) => {
   return (
     <RouteContext.Provider value={{ 
       folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder, 
-      reviews, addReview, setReviews,
+      reviews, addReview, setReviews, deleteReviewFromContext, updateReviewInContext,
       likedReviews, toggleLikedReview,
       loadRouteData, clearRouteData 
     }}>

@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Alert, Dimensions, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import { useRoutes } from '../context/RouteContext';
-import { fetchReviewById } from '../api/reviewApi';
+import { fetchReviewById, deleteReview as deleteReviewApi } from '../api/reviewApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
 
@@ -15,14 +16,20 @@ const ALL_MOCK_DATA = [
   mockRouteResultJeju, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultPhuQuoc,
 ];
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const ReviewDetailScreen = () => {
   const router = useRouter();
   const { id, type, from } = useLocalSearchParams();
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null);
+  const [allModalPhotos, setAllModalPhotos] = useState([]);
   const [routeData, setRouteData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
-  const { reviews, allRoutes } = useRoutes();
+  const [isMyReview, setIsMyReview] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [rawReviewData, setRawReviewData] = useState(null);
+  const { reviews, allRoutes, deleteReviewFromContext } = useRoutes();
 
   const handleBack = () => {
     if (from) {
@@ -30,6 +37,67 @@ const ReviewDetailScreen = () => {
     } else {
       router.push('/review');
     }
+  };
+
+  // 본인 리뷰인지 확인
+  useEffect(() => {
+    const checkOwnership = async () => {
+      try {
+        const { apiClient } = require('../api/apiClient');
+        const profile = await apiClient('/api/v1/auth/me').catch(() => null);
+        if (profile && rawReviewData && rawReviewData.user_id === profile.user_id) {
+          setIsMyReview(true);
+        }
+      } catch (e) {
+        // 무시
+      }
+    };
+    if (type === 'db' && rawReviewData) {
+      checkOwnership();
+    }
+  }, [rawReviewData, type]);
+
+  const handleDelete = () => {
+    Alert.alert(
+      '후기 삭제',
+      '정말로 이 후기를 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteReviewApi(id);
+              deleteReviewFromContext(Number(id));
+              Alert.alert('완료', '후기가 삭제되었습니다.', [
+                { text: '확인', onPress: () => handleBack() }
+              ]);
+            } catch (e) {
+              Alert.alert('오류', '삭제에 실패했습니다: ' + e.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEdit = () => {
+    setShowMenu(false);
+    if (!rawReviewData) return;
+    router.push({
+      pathname: '/review-write',
+      params: {
+        id: rawReviewData.itinerary_id,
+        editMode: 'true',
+        reviewId: String(rawReviewData.review_pk),
+        editTitle: rawReviewData.title || '',
+        editRatings: JSON.stringify(rawReviewData.ratings || {}),
+        editComments: JSON.stringify(rawReviewData.comments || {}),
+        editPhotos: JSON.stringify(rawReviewData.photos || {}),
+        editThumbnailPlaceId: rawReviewData.thumbnail_place_id || '',
+      }
+    });
   };
 
   useEffect(() => {
@@ -41,20 +109,19 @@ const ReviewDetailScreen = () => {
         if (type === 'db') {
           const dbReview = await fetchReviewById(id);
           if (dbReview) {
+            setRawReviewData(dbReview);
             const recData = dbReview.recommendation_data || {};
             const totalDays = dbReview.days || 1;
 
             let finalSchedule = [];
 
             if (recData.schedule && recData.schedule.length > 0) {
-              // schedule 형식: 이미 일차별로 분리되어 있음
               let globalIndex = 0;
               finalSchedule = recData.schedule.map(dayData => ({
                 day: dayData.day,
                 places: dayData.places.map(p => ({ ...p, _gi: globalIndex++ })),
               }));
             } else if (recData.places && recData.places.length > 0) {
-              // flat places 형식: days 값으로 일차별 균등 분배
               const flatPlaces = recData.places;
               const perDay = Math.ceil(flatPlaces.length / totalDays);
               for (let day = 1; day <= totalDays; day++) {
@@ -138,6 +205,17 @@ const ReviewDetailScreen = () => {
     </View>
   );
 
+  // 사진 전체보기 모달 열기 (해당 장소의 사진 목록 + 클릭한 인덱스)
+  const openImageViewer = (photos, index) => {
+    setAllModalPhotos(photos);
+    setSelectedImageIndex(index);
+  };
+
+  const closeImageViewer = () => {
+    setSelectedImageIndex(null);
+    setAllModalPhotos([]);
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -179,7 +257,6 @@ const ReviewDetailScreen = () => {
     const daySchedule = routeData.schedule.find(s => s.day === effectiveDay);
     if (daySchedule) {
       displayedReviews = daySchedule.places.map((place, index) => {
-        // _gi: flat places 형식에서 분배된 전역 인덱스, 없으면 로컬 index
         const placeId = place.id || `place_${place._gi ?? index}`;
         const review = routeData.reviewSection.allReviews?.find(r =>
           String(r.placeId) === String(placeId) || r.placeName === place.name
@@ -203,7 +280,27 @@ const ReviewDetailScreen = () => {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        {/* 본인 리뷰일 때만 메뉴 버튼 표시 */}
+        {isMyReview && (
+          <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={styles.menuButton}>
+            <Text style={styles.menuIcon}>⋮</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* 드롭다운 메뉴 */}
+      {showMenu && (
+        <View style={styles.dropdownMenu}>
+          <TouchableOpacity style={styles.dropdownItem} onPress={handleEdit}>
+            <Text style={styles.dropdownText}>✏️  수정하기</Text>
+          </TouchableOpacity>
+          <View style={styles.dropdownDivider} />
+          <TouchableOpacity style={styles.dropdownItem} onPress={() => { setShowMenu(false); handleDelete(); }}>
+            <Text style={[styles.dropdownText, { color: '#E74C3C' }]}>🗑️  삭제하기</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrapper}>
@@ -248,7 +345,7 @@ const ReviewDetailScreen = () => {
                     {item.photos && item.photos.length > 0 ? (
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
                         {item.photos.map((imgUrl, imgIndex) => (
-                          <TouchableOpacity key={imgIndex} activeOpacity={0.8} onPress={() => setSelectedImage(imgUrl)}>
+                          <TouchableOpacity key={imgIndex} activeOpacity={0.8} onPress={() => openImageViewer(item.photos, imgIndex)}>
                             <Image
                               source={typeof imgUrl === 'string' ? { uri: imgUrl } : imgUrl}
                               style={styles.thumbnailImage}
@@ -270,16 +367,52 @@ const ReviewDetailScreen = () => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <Modal visible={selectedImage !== null} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSelectedImage(null)}>
-          {selectedImage ? (
-            <Image
-              source={typeof selectedImage === 'string' ? { uri: selectedImage } : selectedImage}
-              style={styles.fullScreenImage}
-              resizeMode="contain"
-            />
-          ) : null}
-        </TouchableOpacity>
+      {/* 사진 전체보기 모달 (스와이프 지원) */}
+      <Modal visible={selectedImageIndex !== null} transparent animationType="fade" onRequestClose={closeImageViewer}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalCloseBtn} onPress={closeImageViewer}>
+            <Text style={styles.modalCloseBtnText}>✕</Text>
+          </TouchableOpacity>
+
+          {allModalPhotos.length > 0 && (
+            <>
+              <FlatList
+                data={allModalPhotos}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={selectedImageIndex || 0}
+                getItemLayout={(_, index) => ({
+                  length: SCREEN_WIDTH,
+                  offset: SCREEN_WIDTH * index,
+                  index,
+                })}
+                keyExtractor={(_, index) => String(index)}
+                renderItem={({ item }) => (
+                  <View style={{ width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' }}>
+                    <Image
+                      source={typeof item === 'string' ? { uri: item } : item}
+                      style={styles.fullScreenImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
+                onMomentumScrollEnd={(e) => {
+                  const newIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                  setSelectedImageIndex(newIndex);
+                }}
+              />
+              {/* 페이지 인디케이터 */}
+              {allModalPhotos.length > 1 && (
+                <View style={styles.pageIndicator}>
+                  {allModalPhotos.map((_, idx) => (
+                    <View key={idx} style={[styles.dot, idx === selectedImageIndex && styles.dotActive]} />
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -297,6 +430,29 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 8 },
   backIcon: { fontSize: 24, fontWeight: 'bold', color: '#111' },
+  menuButton: { padding: 8 },
+  menuIcon: { fontSize: 24, fontWeight: 'bold', color: '#111' },
+
+  dropdownMenu: {
+    position: 'absolute',
+    top: 100,
+    right: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 100,
+    minWidth: 150,
+  },
+  dropdownItem: { paddingVertical: 14, paddingHorizontal: 18 },
+  dropdownDivider: { height: 1, backgroundColor: '#F0F0F0' },
+  dropdownText: { fontSize: 15, color: '#333', fontWeight: '500' },
+
   titleWrapper: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -348,8 +504,14 @@ const styles = StyleSheet.create({
   imageScroll: { flexDirection: 'row' },
   thumbnailImage: { width: 90, height: 90, borderRadius: 12, marginRight: 10, backgroundColor: '#E0E0E0' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.85)', justifyContent: 'center', alignItems: 'center' },
-  fullScreenImage: { width: '90%', height: '70%' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.92)', justifyContent: 'center', alignItems: 'center' },
+  modalCloseBtn: { position: 'absolute', top: 60, right: 20, zIndex: 10, padding: 10 },
+  modalCloseBtnText: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold' },
+  fullScreenImage: { width: SCREEN_WIDTH * 0.9, height: '70%' },
+
+  pageIndicator: { flexDirection: 'row', position: 'absolute', bottom: 60, alignSelf: 'center' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.4)', marginHorizontal: 4 },
+  dotActive: { backgroundColor: '#FFFFFF' },
 });
 
 export default ReviewDetailScreen;
