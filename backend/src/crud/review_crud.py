@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from src.models.review import Reviews
+from src.models.review import Reviews, UserReviewLike
 from src.models.itinerary import Itineraries
 from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview
 
@@ -53,10 +53,20 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
         ))
     return items
 
-def like_review(session: Session, review_id: int) -> Reviews | None:
+def like_review(session: Session, review_id: int, user_id: int) -> Reviews | None:
     review = session.get(Reviews, review_id)
     if not review:
         return None
+    # 이미 좋아요한 경우 중복 처리 안 함
+    existing = session.exec(
+        select(UserReviewLike).where(
+            UserReviewLike.user_id == user_id,
+            UserReviewLike.review_id == review_id
+        )
+    ).first()
+    if existing:
+        return review
+    session.add(UserReviewLike(user_id=user_id, review_id=review_id))
     review.like_count = (review.like_count or 0) + 1
     session.add(review)
     session.commit()
@@ -64,15 +74,31 @@ def like_review(session: Session, review_id: int) -> Reviews | None:
     return review
 
 
-def unlike_review(session: Session, review_id: int) -> Reviews | None:
+def unlike_review(session: Session, review_id: int, user_id: int) -> Reviews | None:
     review = session.get(Reviews, review_id)
     if not review:
         return None
+    existing = session.exec(
+        select(UserReviewLike).where(
+            UserReviewLike.user_id == user_id,
+            UserReviewLike.review_id == review_id
+        )
+    ).first()
+    if not existing:
+        return review
+    session.delete(existing)
     review.like_count = max(0, (review.like_count or 0) - 1)
     session.add(review)
     session.commit()
     session.refresh(review)
     return review
+
+
+def get_user_liked_review_ids(session: Session, user_id: int) -> list[int]:
+    results = session.exec(
+        select(UserReviewLike.review_id).where(UserReviewLike.user_id == user_id)
+    ).all()
+    return list(results)
 
 
 def get_top_liked_reviews(session: Session, limit: int = 10) -> list[TopLikedReview]:

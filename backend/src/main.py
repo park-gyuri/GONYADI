@@ -16,6 +16,7 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     from src.core.database import engine
     from src.models import auth  # noqa: F401 — EmailVerification 모델 로드
+    from src.models import review  # noqa: F401 — UserReviewLike 모델 로드
     SQLModel.metadata.create_all(engine)
     # places 테이블 신규 컬럼 마이그레이션 (이미 존재하면 무시)
     with engine.connect() as conn:

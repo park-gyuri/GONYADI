@@ -29,3 +29,7 @@ export const unlikeReview = async (reviewId) => {
 export const fetchTopLikedReviews = async () => {
   return await apiClient('/api/v1/reviews/top-liked', { method: 'GET' });
 };
+
+export const fetchMyLikedReviews = async () => {
+  return await apiClient('/api/v1/reviews/my-likes', { method: 'GET' });
+};
