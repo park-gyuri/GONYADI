@@ -11,6 +11,7 @@ class Reviews(SQLModel, table=True):
     ratings: dict = Field(default_factory=dict, sa_column=Column(JSON))
     comments: dict = Field(default_factory=dict, sa_column=Column(JSON))
     photos: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    thumbnail_place_id: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.now)
     like_count: int = Field(default=0)
 

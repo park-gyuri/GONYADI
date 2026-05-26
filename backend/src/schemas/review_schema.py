@@ -8,6 +8,14 @@ class ReviewCreate(BaseModel):
     ratings: Dict[str, int]
     comments: Dict[str, str]
     photos: Dict[str, List[str]]
+    thumbnail_place_id: Optional[str] = None
+
+class ReviewUpdate(BaseModel):
+    title: Optional[str] = None
+    ratings: Optional[Dict[str, int]] = None
+    comments: Optional[Dict[str, str]] = None
+    photos: Optional[Dict[str, List[str]]] = None
+    thumbnail_place_id: Optional[str] = None
 
 class ReviewListItem(BaseModel):
     review_pk: int
@@ -36,6 +44,7 @@ class ReviewDetailResponse(BaseModel):
     ratings: Dict[str, int]
     comments: Dict[str, str]
     photos: Dict[str, List[str]]
+    thumbnail_place_id: Optional[str] = None
     created_at: datetime
     recommendation_data: Optional[Dict[str, Any]] = None
     region: Optional[str] = None
