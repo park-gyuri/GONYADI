@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 from src.models.review import Reviews
 from src.models.itinerary import Itineraries
-from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview
+from src.schemas.review_schema import ReviewCreate, ReviewUpdate, ReviewListItem, ReviewDetailResponse, TopLikedReview
 
 def create_review(session: Session, review_in: ReviewCreate, user_id: int) -> Reviews:
     db_review = Reviews(
@@ -11,6 +11,7 @@ def create_review(session: Session, review_in: ReviewCreate, user_id: int) -> Re
         ratings=review_in.ratings,
         comments=review_in.comments,
         photos=review_in.photos,
+        thumbnail_place_id=review_in.thumbnail_place_id,
     )
     session.add(db_review)
     session.commit()
@@ -34,10 +35,19 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
 
         all_photos = review.photos or {}
         thumbnail = None
-        for photo_list in all_photos.values():
-            if photo_list:
-                thumbnail = photo_list[0]
-                break
+
+        # thumbnail_place_id가 지정된 경우 해당 장소의 첫 사진을 우선 사용
+        if review.thumbnail_place_id and review.thumbnail_place_id in all_photos:
+            place_photos = all_photos[review.thumbnail_place_id]
+            if place_photos:
+                thumbnail = place_photos[0]
+
+        # 지정되지 않았거나 해당 사진이 없으면 기존 로직 (첫 번째 사진)
+        if not thumbnail:
+            for photo_list in all_photos.values():
+                if photo_list:
+                    thumbnail = photo_list[0]
+                    break
 
         items.append(ReviewListItem(
             review_pk=review.review_pk,
@@ -120,8 +130,39 @@ def get_review_by_id(session: Session, review_id: int) -> ReviewDetailResponse |
         ratings=review.ratings or {},
         comments=review.comments or {},
         photos=review.photos or {},
+        thumbnail_place_id=review.thumbnail_place_id,
         created_at=review.created_at,
         recommendation_data=itinerary.recommendation_data if itinerary else None,
         region=itinerary.region if itinerary else None,
         days=itinerary.days if itinerary else None,
     )
+
+def update_review(session: Session, review_id: int, review_in: ReviewUpdate, user_id: int) -> Reviews | None:
+    review = session.get(Reviews, review_id)
+    if not review or review.user_id != user_id:
+        return None
+    
+    if review_in.title is not None:
+        review.title = review_in.title
+    if review_in.ratings is not None:
+        review.ratings = review_in.ratings
+    if review_in.comments is not None:
+        review.comments = review_in.comments
+    if review_in.photos is not None:
+        review.photos = review_in.photos
+    if review_in.thumbnail_place_id is not None:
+        review.thumbnail_place_id = review_in.thumbnail_place_id
+    
+    session.add(review)
+    session.commit()
+    session.refresh(review)
+    return review
+
+def delete_review(session: Session, review_id: int, user_id: int) -> bool:
+    review = session.get(Reviews, review_id)
+    if not review or review.user_id != user_id:
+        return False
+    
+    session.delete(review)
+    session.commit()
+    return True

@@ -16,14 +16,20 @@ export const RouteProvider = ({ children }) => {
   // 좋아요 누른 리뷰 목록 (전역 상태) { reviewId: boolean }
   const [likedReviews, setLikedReviews] = useState({});
 
+  // 즐겨찾기한 경로 목록 (전역 상태) { routeId: boolean }
+  const [favoriteRoutes, setFavoriteRoutes] = useState({});
+
   // 앱 시작 시 AsyncStorage에서 찜 데이터 복원
   useEffect(() => {
     const loadLiked = async () => {
       try {
         const saved = await AsyncStorage.getItem('liked_reviews');
         if (saved) setLikedReviews(JSON.parse(saved));
+
+        const savedFavs = await AsyncStorage.getItem('favorite_routes');
+        if (savedFavs) setFavoriteRoutes(JSON.parse(savedFavs));
       } catch (e) {
-        console.error('찜 데이터 로드 실패:', e);
+        console.error('찜/즐겨찾기 데이터 로드 실패:', e);
       }
     };
     loadLiked();
@@ -37,6 +43,13 @@ export const RouteProvider = ({ children }) => {
       // 찜 데이터 복원 (로그아웃 후 재로그인 시에도 유지)
       const savedLiked = await AsyncStorage.getItem('liked_reviews');
       if (savedLiked) setLikedReviews(JSON.parse(savedLiked));
+
+      const savedFavs = await AsyncStorage.getItem('favorite_routes');
+      let favMap = {};
+      if (savedFavs) {
+        favMap = JSON.parse(savedFavs);
+        setFavoriteRoutes(favMap);
+      }
 
       // 1. 서버 데이터 병렬 호출
       const [serverFolders, serverRoutes, allServerReviews, userProfile] = await Promise.all([
@@ -59,7 +72,7 @@ export const RouteProvider = ({ children }) => {
           location: r.region,
           date: r.created_at || new Date().toISOString().split('T')[0],
           days: r.days,
-          isFavorite: false,
+          isFavorite: !!favMap[r.itinerary_pk],
           recommendation_data: r.recommendation_data
         }));
         setAllRoutes(formattedRoutes);
@@ -104,12 +117,22 @@ export const RouteProvider = ({ children }) => {
     setAllRoutes([]);
     setReviews([]);
     setLikedReviews({});
+    setFavoriteRoutes({});
   };
 
-  const toggleFavorite = (id) => {
+  const toggleFavorite = async (id) => {
     setAllRoutes(prev => prev.map(route => 
       route.id === id ? { ...route, isFavorite: !route.isFavorite } : route
     ));
+    const isCurrentlyFav = !!favoriteRoutes[id];
+    const updated = { ...favoriteRoutes, [id]: !isCurrentlyFav };
+    if (!updated[id]) delete updated[id];
+    setFavoriteRoutes(updated);
+    try {
+      await AsyncStorage.setItem('favorite_routes', JSON.stringify(updated));
+    } catch (e) {
+      console.error('즐겨찾기 저장 실패:', e);
+    }
   };
 
   const addFolder = async (name) => {
@@ -157,6 +180,16 @@ export const RouteProvider = ({ children }) => {
     setReviews(prev => [review, ...prev]);
   };
 
+  const deleteReviewFromContext = (reviewId) => {
+    setReviews(prev => prev.filter(r => r.id !== reviewId));
+  };
+
+  const updateReviewInContext = (reviewId, updatedData) => {
+    setReviews(prev => prev.map(r => 
+      r.id === reviewId ? { ...r, ...updatedData } : r
+    ));
+  };
+
   const toggleLikedReview = async (reviewId) => {
     const isCurrentlyLiked = !!likedReviews[reviewId];
     const updated = { ...likedReviews, [reviewId]: !isCurrentlyLiked };
@@ -178,7 +211,7 @@ export const RouteProvider = ({ children }) => {
   return (
     <RouteContext.Provider value={{ 
       folders, allRoutes, setAllRoutes, toggleFavorite, addFolder, updateFolder, deleteFolder, 
-      reviews, addReview, setReviews,
+      reviews, addReview, setReviews, deleteReviewFromContext, updateReviewInContext,
       likedReviews, toggleLikedReview,
       loadRouteData, clearRouteData 
     }}>

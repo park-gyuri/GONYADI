@@ -34,16 +34,36 @@ def get_review(review_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Review not found")
     return review
 
-@router.post("/reviews/{review_id}/like", status_code=200)
-def like_review(review_id: int, session: Session = Depends(get_session)):
-    review = review_crud.like_review(session=session, review_id=review_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    return {"like_count": review.like_count}
+from src.schemas.review_schema import ReviewUpdate
 
-@router.delete("/reviews/{review_id}/like", status_code=200)
-def unlike_review(review_id: int, session: Session = Depends(get_session)):
-    review = review_crud.unlike_review(session=session, review_id=review_id)
+@router.put("/reviews/{review_id}", response_model=ReviewDetailResponse)
+def update_review(
+    review_id: int,
+    review_in: ReviewUpdate,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    review = review_crud.update_review(
+        session=session, 
+        review_id=review_id, 
+        review_in=review_in, 
+        user_id=current_user.user_pk
+    )
     if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    return {"like_count": review.like_count}
+        raise HTTPException(status_code=404, detail="Review not found or not authorized")
+    return review_crud.get_review_by_id(session=session, review_id=review.review_pk)
+
+@router.delete("/reviews/{review_id}")
+def delete_review(
+    review_id: int,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(get_current_user)
+):
+    success = review_crud.delete_review(
+        session=session, 
+        review_id=review_id, 
+        user_id=current_user.user_pk
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Review not found or not authorized")
+    return {"message": "Review deleted successfully"}
