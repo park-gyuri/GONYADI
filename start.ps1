@@ -54,56 +54,60 @@ if (Test-Path $EnvFile) {
 }
 
 # ==============================================================
-# STEP 1: Docker + DB
+# STEP 1: Docker + DB (DATABASE_URL 설정 시 자동 건너뜀)
 # ==============================================================
 if (-not $SkipDB) {
-    Write-Step "Checking Docker Desktop..."
-
-    $dockerRunning = $false
-    try {
-        $null = docker info 2>$null
-        $dockerRunning = $true
-    } catch {}
-
-    if (-not $dockerRunning) {
-        Write-Warn "Docker Desktop is not running."
-        Write-Host "   Start Docker Desktop first, or use: .\start.ps1 -SkipDB" -ForegroundColor Gray
-        exit 1
-    }
-    Write-Ok "Docker Desktop is running"
-
-    Write-Step "Checking PostgreSQL container..."
-
-    $containerName = "GONYADI"
-    $containerState = docker inspect -f '{{.State.Running}}' $containerName 2>$null
-
-    if ($containerState -eq "true") {
-        Write-Ok "Container '$containerName' already running"
+    if ($env:DATABASE_URL) {
+        Write-Ok "DATABASE_URL detected — using external DB (Supabase). Skipping Docker."
     } else {
-        Write-Host "   Starting container..." -ForegroundColor Gray
-        docker-compose --env-file $EnvFile -f (Join-Path $BackendDir "docker-compose.yml") up -d 2>$null
-        Write-Ok "Container '$containerName' started"
-    }
+        Write-Step "Checking Docker Desktop..."
 
-    Write-Step "Waiting for DB connection..."
-    $maxRetries = 15
-    $retry = 0
-    while ($retry -lt $maxRetries) {
-        $retry++
+        $dockerRunning = $false
         try {
-            $result = docker exec $containerName pg_isready -U $env:DB_USER 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Ok "DB ready ($retry/$maxRetries)"
-                break
-            }
+            $null = docker info 2>$null
+            $dockerRunning = $true
         } catch {}
 
-        if ($retry -eq $maxRetries) {
-            Write-Err "DB connection timeout. Check Docker Desktop."
+        if (-not $dockerRunning) {
+            Write-Warn "Docker Desktop is not running."
+            Write-Host "   Start Docker Desktop first, or use: .\start.ps1 -SkipDB" -ForegroundColor Gray
             exit 1
         }
-        Write-Host "   Waiting... ($retry/$maxRetries)" -ForegroundColor Gray
-        Start-Sleep -Seconds 2
+        Write-Ok "Docker Desktop is running"
+
+        Write-Step "Checking PostgreSQL container..."
+
+        $containerName = "GONYADI"
+        $containerState = docker inspect -f '{{.State.Running}}' $containerName 2>$null
+
+        if ($containerState -eq "true") {
+            Write-Ok "Container '$containerName' already running"
+        } else {
+            Write-Host "   Starting container..." -ForegroundColor Gray
+            docker-compose --env-file $EnvFile -f (Join-Path $BackendDir "docker-compose.yml") up -d 2>$null
+            Write-Ok "Container '$containerName' started"
+        }
+
+        Write-Step "Waiting for DB connection..."
+        $maxRetries = 15
+        $retry = 0
+        while ($retry -lt $maxRetries) {
+            $retry++
+            try {
+                $result = docker exec $containerName pg_isready -U $env:DB_USER 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Ok "DB ready ($retry/$maxRetries)"
+                    break
+                }
+            } catch {}
+
+            if ($retry -eq $maxRetries) {
+                Write-Err "DB connection timeout. Check Docker Desktop."
+                exit 1
+            }
+            Write-Host "   Waiting... ($retry/$maxRetries)" -ForegroundColor Gray
+            Start-Sleep -Seconds 2
+        }
     }
 }
 
