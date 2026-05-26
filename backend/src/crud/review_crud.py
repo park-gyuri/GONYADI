@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 from src.models.review import Reviews
 from src.models.itinerary import Itineraries
-from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse
+from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview
 
 def create_review(session: Session, review_in: ReviewCreate, user_id: int) -> Reviews:
     db_review = Reviews(
@@ -49,8 +49,58 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
             region=itinerary.region if itinerary else None,
             author=user.user_nickname if user else "익명 사용자",
             created_at=review.created_at,
+            like_count=review.like_count or 0,
         ))
     return items
+
+def like_review(session: Session, review_id: int) -> Reviews | None:
+    review = session.get(Reviews, review_id)
+    if not review:
+        return None
+    review.like_count = (review.like_count or 0) + 1
+    session.add(review)
+    session.commit()
+    session.refresh(review)
+    return review
+
+
+def unlike_review(session: Session, review_id: int) -> Reviews | None:
+    review = session.get(Reviews, review_id)
+    if not review:
+        return None
+    review.like_count = max(0, (review.like_count or 0) - 1)
+    session.add(review)
+    session.commit()
+    session.refresh(review)
+    return review
+
+
+def get_top_liked_reviews(session: Session, limit: int = 10) -> list[TopLikedReview]:
+    statement = (
+        select(Reviews, Itineraries)
+        .join(Itineraries, Reviews.itinerary_id == Itineraries.itinerary_pk, isouter=True)
+        .where(Reviews.like_count > 0)
+        .order_by(Reviews.like_count.desc())
+        .limit(limit)
+    )
+    results = session.exec(statement).all()
+    items = []
+    for review, itinerary in results:
+        all_photos = review.photos or {}
+        thumbnail = None
+        for photo_list in all_photos.values():
+            if photo_list:
+                thumbnail = photo_list[0]
+                break
+        items.append(TopLikedReview(
+            review_pk=review.review_pk,
+            title=review.title,
+            region=itinerary.region if itinerary else None,
+            thumbnail=thumbnail,
+            like_count=review.like_count or 0,
+        ))
+    return items
+
 
 def get_review_by_id(session: Session, review_id: int) -> ReviewDetailResponse | None:
     statement = select(Reviews, Itineraries).join(

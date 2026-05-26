@@ -1,0 +1,12 @@
+{
+    "region": "대구",
+    "center_lat": 35.8714,
+    "center_lng": 128.6014,
+    "nights": 0,
+    "days": 1,
+    "number_of_people": 2,
+    "transports": ["도보"],
+    "themes": ["힐링"],
+    "conditions": [],
+    "user_message": ""
+}

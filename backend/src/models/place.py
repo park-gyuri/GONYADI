@@ -16,5 +16,13 @@ class Places(SQLModel, table=True):
     address:         Optional[str] = Field(default=None)
     rating:          Optional[float] = Field(default=None)
     opening_hours:   Optional[str]   = Field(default=None)
-    
+
+    # 특수 조건 검증 결과 (None=미확인, True=가능, False=불가)
+    is_pet_friendly: Optional[bool] = Field(default=None)
+    is_accessible:   Optional[bool] = Field(default=None)
+
+    # 축제 기간 (contentTypeId=15 장소 전용, YYYYMMDD 형식)
+    festival_start_date: Optional[str] = Field(default=None)
+    festival_end_date:   Optional[str] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.now)

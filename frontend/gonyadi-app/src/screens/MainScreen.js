@@ -1,36 +1,42 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const recommendedDestinations = [
-  { id: 1, city: '경주', country: '대한민국', image: 'https://picsum.photos/seed/gyeongju/300/200' },
-  { id: 2, city: '부산', country: '대한민국', image: 'https://picsum.photos/seed/busan/300/200' },
-  { id: 3, city: '대전', country: '대한민국', image: 'https://picsum.photos/seed/daejeon/300/200' },
-  { id: 4, city: '대구', country: '대한민국', image: 'https://picsum.photos/seed/daegu/300/200' },
-  { id: 5, city: '울산', country: '대한민국', image: 'https://picsum.photos/seed/ulsan/300/200' },
-  { id: 6, city: '여수', country: '대한민국', image: 'https://picsum.photos/seed/yeosu/300/200' },
-];
+import { fetchTopLikedReviews } from '../api/reviewApi';
 
 const MainScreen = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState([]);
+  const [topReviews, setTopReviews] = useState([]);
+  const [loadingTop, setLoadingTop] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const loadHistory = async () => {
       try {
         const storedHistory = await AsyncStorage.getItem('search_history');
-        if (storedHistory) {
-          setSearchHistory(JSON.parse(storedHistory));
-        }
+        if (storedHistory) setSearchHistory(JSON.parse(storedHistory));
       } catch (e) {
         console.error('검색 기록 로드 실패', e);
       }
     };
     loadHistory();
+  }, []);
+
+  useEffect(() => {
+    const loadTop = async () => {
+      try {
+        const data = await fetchTopLikedReviews();
+        setTopReviews(data || []);
+      } catch (e) {
+        console.error('인기 여행지 로드 실패', e);
+      } finally {
+        setLoadingTop(false);
+      }
+    };
+    loadTop();
   }, []);
 
   const saveHistoryToStorage = async (newHistory) => {
@@ -43,7 +49,6 @@ const MainScreen = () => {
 
   const navigateToRecommend = (keyword = searchQuery) => {
     if (keyword.trim() !== '') {
-      // 검색 기록 추가 (중복 제거 및 맨 앞으로, 최대 50개 저장)
       const newHistory = [keyword.trim(), ...searchHistory.filter(item => item !== keyword.trim())].slice(0, 50);
       setSearchHistory(newHistory);
       saveHistoryToStorage(newHistory);
@@ -57,6 +62,12 @@ const MainScreen = () => {
     const newHistory = searchHistory.filter(item => item !== keyword);
     setSearchHistory(newHistory);
     saveHistoryToStorage(newHistory);
+  };
+
+  const getCardImage = (review) => {
+    if (review.thumbnail) return { uri: review.thumbnail };
+    const seed = encodeURIComponent(review.region || review.title || 'korea');
+    return { uri: `https://picsum.photos/seed/${seed}/300/200` };
   };
 
   return (
@@ -103,21 +114,37 @@ const MainScreen = () => {
           </View>
         </View>
 
-        {/* [섹션 B] 추천 여행지 (2열 세로 스크롤) */}
+        {/* [섹션 B] 인기 여행지 — 하트 많이 받은 후기 기반 */}
         <View style={styles.recommendSection}>
-          <Text style={styles.sectionTitle}>추천 여행지</Text>
+          <Text style={styles.sectionTitle}>인기 여행지</Text>
+          <Text style={styles.sectionSubtitle}>다른 여행자들이 좋아한 후기</Text>
 
-          <View style={styles.gridContainer}>
-            {recommendedDestinations.map(dest => (
-              <TouchableOpacity key={dest.id} style={styles.gridCard} activeOpacity={0.9}>
-                <Image source={{ uri: dest.image }} style={styles.cardImage} />
-                <View style={styles.cardTextContainer}>
-                  <Text style={styles.countryText}>{dest.country}</Text>
-                  <Text style={styles.cityText}>{dest.city}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {loadingTop ? (
+            <ActivityIndicator size="small" color="#43B0AB" style={{ marginTop: 20 }} />
+          ) : topReviews.length === 0 ? (
+            <Text style={styles.emptyText}>아직 인기 여행지가 없습니다.{'\n'}후기에 하트를 눌러 추천해보세요!</Text>
+          ) : (
+            <View style={styles.gridContainer}>
+              {topReviews.map((review) => (
+                <TouchableOpacity
+                  key={review.review_pk}
+                  style={styles.gridCard}
+                  activeOpacity={0.9}
+                  onPress={() => router.push({ pathname: '/review-detail', params: { id: review.review_pk, type: 'db' } })}
+                >
+                  <Image source={getCardImage(review)} style={styles.cardImage} />
+                  <View style={styles.cardTextContainer}>
+                    <Text style={styles.cityText} numberOfLines={1}>{review.region || '대한민국'}</Text>
+                    <Text style={styles.cardTitle} numberOfLines={1}>{review.title}</Text>
+                    <View style={styles.likeRow}>
+                      <Text style={styles.heartIcon}>♥</Text>
+                      <Text style={styles.likeCount}>{review.like_count}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={{ height: 40 }} />
@@ -149,7 +176,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   searchSection: {
-    backgroundColor: '#C9ECE6', // 피그마 스크린샷 연한 청록색 느낌
+    backgroundColor: '#C9ECE6',
     borderRadius: 20,
     padding: 24,
     marginBottom: 25,
@@ -165,7 +192,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 30, // 약간 더 트렌디한 알약 모양
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: '#CDE5DE',
     height: 48,
@@ -195,7 +222,7 @@ const styles = StyleSheet.create({
   historyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.4)', 
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#C6DFD6',
@@ -230,8 +257,20 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 4,
     color: '#111',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 16,
   },
   gridContainer: {
     flexDirection: 'row',
@@ -253,17 +292,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#CCC',
   },
   cardTextContainer: {
-    padding: 12,
+    padding: 10,
   },
-  countryText: {
-    fontSize: 14,
+  cityText: {
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#111',
   },
-  cityText: {
-    fontSize: 12,
+  cardTitle: {
+    fontSize: 11,
     color: '#555',
-    marginTop: 4,
+    marginTop: 2,
+  },
+  likeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  heartIcon: {
+    fontSize: 13,
+    color: '#E05C5C',
+  },
+  likeCount: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: '600',
   },
 });
 

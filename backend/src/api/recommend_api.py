@@ -12,7 +12,7 @@ from src.schemas.recommend_schema import (
 from src.services.prompt_builder import build_rag_prompt
 from src.services.gemini import get_gemini_curated_places, critique_and_revise_itinerary
 from src.services.google_routes import build_route_segments
-from src.services.rag_retrieval import retrieve_and_filter_candidates
+from src.services.rag_retrieval import retrieve_and_filter_candidates, MIN_CANDIDATES
 import src.crud.place_crud as place_crud
 
 
@@ -119,7 +119,7 @@ async def handle_recommendation(
 
     # ── RAG 파이프라인 ────────────────────────────────────────────────────────
     print(f"[추천] RAG 파이프라인 실행 (center={center_lat},{center_lng})")
-    candidates = await retrieve_and_filter_candidates(req, session)
+    candidates, used_radius_km = await retrieve_and_filter_candidates(req, session)
 
     if not candidates:
         raise HTTPException(
@@ -127,24 +127,33 @@ async def handle_recommendation(
             detail=f"'{req.region}' 주변에서 조건에 맞는 장소를 찾지 못했습니다. 검색 범위나 테마를 변경해 보세요.",
         )
 
-    # ── Gemini Curation (1차: 후보 풀에서 장소 선택) ──────────────────────────
+    # 후보 부족 여부 판단 (자동 확장 없이 사용자에게 선택권 부여)
+    insufficient = len(candidates) < MIN_CANDIDATES
+    shortage_msg = ""
+    if insufficient:
+        theme_str = "·".join([th.value for th in req.themes])
+        shortage_msg = f"'{theme_str}' 장소가 부족합니다. 검색 반경을 넓히시겠습니까?"
+        print(f"[추천] 후보 부족 ({len(candidates)}개 < {MIN_CANDIDATES}개) — 프론트 팝업 트리거")
+
+    # ── Gemini Curation (1차: 후보 풀에서 장소 선택, day 경계 포함) ───────────
     # 동기 Gemini 함수를 스레드풀에서 실행해 async 이벤트 루프 블록 방지
     rag_prompt = build_rag_prompt(req, candidates)
+    condition_values = [c.value for c in req.conditions]
     loop = asyncio.get_event_loop()
-    places_from_ai = await loop.run_in_executor(
-        None, get_gemini_curated_places, rag_prompt, candidates
+    schedule = await loop.run_in_executor(
+        None, get_gemini_curated_places, rag_prompt, candidates, condition_values
     )
 
     # ── AI 검토 (2차: 중복·비현실적 동선 감지 및 보정) ────────────────────────
-    if places_from_ai:
-        places_from_ai = await loop.run_in_executor(
-            None, critique_and_revise_itinerary, places_from_ai, candidates, total_days
+    if schedule:
+        schedule = await loop.run_in_executor(
+            None, critique_and_revise_itinerary, schedule, candidates, total_days, condition_values
         )
 
-    if not places_from_ai:
-        # Gemini 큐레이션 실패 → 검증된 DB 후보 상위 N개 직접 사용
+    if not schedule:
+        # Gemini 큐레이션 실패 → 검증된 DB 후보 상위 N개를 균등 분할로 fallback
         print("[RAG] Gemini 큐레이션 결과 없음 → DB 후보 직접 사용")
-        places_from_ai = [
+        fallback_places = [
             PlaceResult(
                 name=c.name,
                 lat=c.lat,
@@ -153,10 +162,27 @@ async def handle_recommendation(
                 duration=60,
                 category=c.category,
             )
-            for c in candidates[: total_days * 5]
+            for c in candidates[: total_days * 7]
         ]
+        schedule = _flat_to_schedule(fallback_places, total_days)
 
-    schedule = _flat_to_schedule(places_from_ai, total_days)
+    # DB 플래그 기반 뱃지 설정
+    candidate_map = {c.name: c for c in candidates}
+    is_pet_condition        = "반려동물 동반" in condition_values
+    is_wheelchair_condition = "휠체어" in condition_values
+    print(f"[뱃지] 조건: pet={is_pet_condition}, wheelchair={is_wheelchair_condition}")
+    for day_sched in schedule:
+        for place in day_sched.places:
+            cand = candidate_map.get(place.name)
+            accessible_flag = cand.is_accessible if cand else None
+            pet_flag        = cand.is_pet_friendly if cand else None
+            print(f"[뱃지] {place.name} | is_accessible={accessible_flag} | is_pet_friendly={pet_flag}")
+            if is_wheelchair_condition and (cand is None or cand.is_accessible is not True):
+                place.accessibility_unconfirmed = True
+            if is_pet_condition and (cand is None or cand.is_pet_friendly is not True):
+                place.pet_unconfirmed = True
+
+    places_from_ai = [p for d in schedule for p in d.places]
     route_segments = _schedule_to_route_segments(schedule, transport_names)
 
     return RecommendResponse(
@@ -165,4 +191,7 @@ async def handle_recommendation(
         schedule=schedule,
         places=places_from_ai,
         route_segments=route_segments,
+        insufficient_candidates=insufficient,
+        shortage_message=shortage_msg,
+        current_radius_km=used_radius_km,
     )

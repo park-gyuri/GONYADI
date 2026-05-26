@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, Alert, ActivityIndicator, PanResponder, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, Alert, ActivityIndicator, PanResponder, Keyboard, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { getItineraryDetail, requestNewRoute, saveItinerary } from '../api/routeApi';
@@ -234,7 +234,9 @@ const SavedRouteDetailScreen = () => {
             address: place.address || place.description || place.reason,
             transportSegment: segment,
             lat: place.lat || (35.10 + Math.random() * 0.05),
-            lng: place.lng || (129.04 + Math.random() * 0.05)
+            lng: place.lng || (129.04 + Math.random() * 0.05),
+            accessibilityUnconfirmed: place.accessibility_unconfirmed || false,
+            petUnconfirmed: place.pet_unconfirmed || false,
           };
         });
       });
@@ -250,7 +252,9 @@ const SavedRouteDetailScreen = () => {
             address: place.reason,
             transportSegment: segment,
             lat: place.lat,
-            lng: place.lng
+            lng: place.lng,
+            accessibilityUnconfirmed: place.accessibility_unconfirmed || false,
+            petUnconfirmed: place.pet_unconfirmed || false,
           };
         })
       };
@@ -328,8 +332,8 @@ const SavedRouteDetailScreen = () => {
     if (!modifyText.trim()) return;
     setIsModifying(true);
     try {
-      const currentPlaces = daysData[selectedDay] || [];
-      const placesForApi = currentPlaces.map(p => ({
+      const allCurrentPlaces = Object.values(daysData).flat();
+      const placesForApi = allCurrentPlaces.map(p => ({
         name: p.name,
         lat: p.lat ?? 0,
         lng: p.lng ?? 0,
@@ -339,13 +343,20 @@ const SavedRouteDetailScreen = () => {
       }));
       // 저장 시 함께 보관해둔 원본 요청 파라미터 사용 (없으면 기본값)
       const originalReq = apiData?._request || {};
+
+      // 사용자 메시지에서 테마 키워드를 감지해 원본 테마와 합산
+      const ALL_THEMES = ['힐링', '맛집', '카페', '사진', '전시', '체험', '쇼핑', '역사', '문화', '축제', '자연', '오락', '레저'];
+      const detectedThemes = ALL_THEMES.filter(t => modifyText.includes(t));
+      const baseThemes = originalReq.themes ?? ['힐링'];
+      const mergedThemes = [...new Set([...baseThemes, ...detectedThemes])];
+
       const modifyData = {
         region: itinerary.region,
         nights: originalReq.nights ?? Math.max(0, (itinerary.days || 1) - 1),
         days: originalReq.days ?? (itinerary.days || 1),
         number_of_people: originalReq.number_of_people ?? 2,
         transports: originalReq.transports ?? ['도보'],
-        themes: originalReq.themes ?? ['힐링'],
+        themes: mergedThemes,
         conditions: originalReq.conditions ?? [],
         user_message: modifyText,
         original_places: placesForApi,
@@ -359,6 +370,28 @@ const SavedRouteDetailScreen = () => {
     } finally {
       setIsModifying(false);
       setModifyText('');
+    }
+  };
+
+  const handleShare = async () => {
+    const region = itinerary?.region || '여행';
+    const days = Object.keys(daysData).sort((a, b) => a - b);
+
+    const lines = [`🗺️ ${region} ${days.length}일 여행 경로`, ''];
+    days.forEach(day => {
+      lines.push(`[ ${day}일차 ]`);
+      (daysData[day] || []).forEach((place, i) => {
+        lines.push(`  ${i + 1}. ${place.name}`);
+        if (place.address) lines.push(`     ${place.address}`);
+      });
+      lines.push('');
+    });
+    lines.push('GONYADI 앱으로 만든 여행 경로입니다.');
+
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch (e) {
+      Alert.alert('공유 실패', e.message);
     }
   };
 
@@ -509,6 +542,12 @@ const SavedRouteDetailScreen = () => {
                         <Text style={[styles.placeNameText, selectedPlaceId === place.id && { color: '#43B0AB' }]}>{place.name}</Text>
                       </View>
                       <Text style={styles.placeAddress}>{place.address}</Text>
+                      {place.accessibilityUnconfirmed && (
+                        <Text style={styles.accessibilityWarning}>⚠ 접근성 미확인</Text>
+                      )}
+                      {place.petUnconfirmed && (
+                        <Text style={styles.accessibilityWarning}>⚠ 반려동물 동반 가능 여부 미확인</Text>
+                      )}
                     </View>
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}><WastebasketIcon width={20} height={20} color="#A9E2D9" /></TouchableOpacity>
                   </TouchableOpacity>
@@ -535,7 +574,7 @@ const SavedRouteDetailScreen = () => {
             </View>
           </View>
           <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.actionBtn}><Text style={styles.actionBtnText}>공유하기</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}><Text style={styles.actionBtnText}>공유하기</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={() => setSaveModalVisible(true)}><Text style={styles.actionBtnText}>저장하기</Text></TouchableOpacity>
           </View>
         </View>
@@ -617,6 +656,7 @@ const styles = StyleSheet.create({
   placeNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   placeNameText: { fontSize: 18, fontWeight: 'bold', color: '#111', marginLeft: 8 },
   placeAddress: { fontSize: 13, color: '#777', marginLeft: 30 },
+  accessibilityWarning: { fontSize: 11, color: '#E07B39', marginLeft: 30, marginTop: 3 },
   deleteBtn: { padding: 5 },
   transportRow: { paddingLeft: 40, paddingVertical: 15 },
   transportText: { fontSize: 14, color: '#59B5AB', fontWeight: '600' },

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, Share, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
@@ -43,6 +43,19 @@ const ReviewScreen = () => {
       r.region?.toLowerCase().includes(q)
     );
   });
+
+  const handleShare = async (review) => {
+    const lines = [];
+    if (review.title) lines.push(review.title);
+    if (review.region) lines.push(`📍 ${review.region}`);
+    if (review.preview_comment) lines.push(review.preview_comment);
+    lines.push(`\nGONYADI 앱에서 보기 👉 gonyadi://review-detail?id=${review.review_pk}&type=db`);
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch (e) {
+      Alert.alert('공유 실패', e.message);
+    }
+  };
 
   // 연관 검색어 (title, region 기반)
   const allKeywords = Array.from(new Set(
@@ -129,7 +142,7 @@ const ReviewScreen = () => {
                   </View>
                 </View>
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity style={styles.actionBtn}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleShare(review)}>
                     <ShareIcon width={24} height={24} />
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.actionBtn, { paddingRight: 0 }]} onPress={() => toggleLikedReview(review.review_pk)}>

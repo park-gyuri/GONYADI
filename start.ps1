@@ -28,6 +28,11 @@ function Write-Err($msg)  { Write-Host "   [ERR] $msg" -ForegroundColor Red }
 # -- 경로 설정 --
 $ProjectRoot  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir   = Join-Path $ProjectRoot "backend"
+
+# 프로젝트 루트가 아닌 곳에서 실행됐으면 루트로 이동
+if ((Get-Location).Path -ne $ProjectRoot) {
+    Set-Location $ProjectRoot
+}
 $VenvActivate = Join-Path $BackendDir "venv\Scripts\Activate.ps1"
 $EnvFile      = Join-Path $BackendDir ".env"
 

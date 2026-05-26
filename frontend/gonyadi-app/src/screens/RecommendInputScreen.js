@@ -161,14 +161,11 @@ const RecommendInputScreen = () => {
 
       // 프론트엔드 UI 태그를 백엔드 스키마 Enum으로 변환
       const mappedTags = selectedTags.map(tag => {
-        if (tag === '음식') return '맛집';
-        if (tag === '액티비티') return '오락/레저';
-        if (tag === '뚜벅이') return '도보';
         return tag;
       });
 
       const validTransports = mappedTags.filter(tag => ['도보', '자동차', '자전거', '대중교통'].includes(tag));
-      const validThemes = mappedTags.filter(tag => ['힐링', '맛집', '사진', '전시', '체험', '카페', '오락/레저', '역사', '문화', '쇼핑', '축제', '자연'].includes(tag));
+      const validThemes = mappedTags.filter(tag => ['힐링', '맛집', '사진', '전시', '체험', '카페', '오락', '레저', '역사', '문화', '쇼핑', '축제', '자연'].includes(tag));
       const validConditions = mappedTags.filter(tag => ['휠체어', '반려동물 동반', '어린이 동반'].includes(tag));
 
       const formData = {
@@ -189,10 +186,53 @@ const RecommendInputScreen = () => {
 
       console.log('API Request Payload:', formData);
 
-      // 🌟 백엔드 API 호출로 복구
       const data = await requestNewRoute(formData);
-
       setIsLoading(false);
+
+      // 후보 장소 부족 시 사용자에게 선택권 부여
+      if (data.insufficient_candidates) {
+        const currentRadius = data.current_radius_km || 15;
+        const nextRadius = currentRadius < 20 ? 30 : 50;
+        Alert.alert(
+          '',
+          data.shortage_message,
+          [
+            {
+              text: `반경 넓히기 (${nextRadius}km)`,
+              onPress: async () => {
+                setIsLoading(true);
+                try {
+                  const expandedData = await requestNewRoute({ ...formData, radius_km: nextRadius });
+                  setIsLoading(false);
+                  router.push({
+                    pathname: '/route-result',
+                    params: {
+                      response: JSON.stringify(expandedData),
+                      originalRequest: JSON.stringify({ ...formData, radius_km: nextRadius }),
+                    }
+                  });
+                } catch (err) {
+                  setIsLoading(false);
+                  Alert.alert('에러', '경로 추천을 가져오는데 실패했습니다.');
+                }
+              },
+            },
+            {
+              text: '현재 결과로 보기',
+              onPress: () => router.push({
+                pathname: '/route-result',
+                params: {
+                  response: JSON.stringify(data),
+                  originalRequest: JSON.stringify(formData),
+                }
+              }),
+            },
+          ],
+          { cancelable: false }
+        );
+        return;
+      }
+
       router.push({
         pathname: '/route-result',
         params: {
@@ -592,7 +632,7 @@ const RecommendInputScreen = () => {
 
               <Text style={styles.categorySectionTitle}>여행테마</Text>
               <View style={styles.categoryTagsWrapper}>
-                {['힐링', '음식', '카페', '사진', '전시', '체험', '쇼핑', '역사', '축제', '자연', '액티비티'].map((item) => {
+                {['힐링', '맛집', '카페', '사진', '전시', '체험', '쇼핑', '역사', '문화', '축제', '자연', '오락', '레저'].map((item) => {
                   const isSelected = selectedTags.includes(item);
                   return (
                     <TouchableOpacity key={item} style={[styles.categoryTag, isSelected && styles.categoryTagSelected]} onPress={() => handleToggleTag(item)}>

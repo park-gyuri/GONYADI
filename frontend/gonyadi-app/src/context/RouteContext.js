@@ -159,15 +159,18 @@ export const RouteProvider = ({ children }) => {
   };
 
   const toggleLikedReview = async (reviewId) => {
-    const updated = {
-      ...likedReviews,
-      [reviewId]: !likedReviews[reviewId]
-    };
-    // false인 항목 제거 (정리)
+    const isCurrentlyLiked = !!likedReviews[reviewId];
+    const updated = { ...likedReviews, [reviewId]: !isCurrentlyLiked };
     if (!updated[reviewId]) delete updated[reviewId];
     setLikedReviews(updated);
     try {
       await AsyncStorage.setItem('liked_reviews', JSON.stringify(updated));
+      const { likeReview, unlikeReview } = require('../api/reviewApi');
+      if (isCurrentlyLiked) {
+        await unlikeReview(reviewId);
+      } else {
+        await likeReview(reviewId);
+      }
     } catch (e) {
       console.error('찜 데이터 저장 실패:', e);
     }

@@ -34,6 +34,9 @@ const MyScreen = () => {
         const data = await apiClient('/api/v1/auth/me');
         setUserProfile(data);
         setEditName(data.user_nickname);
+        // 저장된 프로필 이미지 불러오기 (사용자별 키)
+        const savedImage = await AsyncStorage.getItem(`profile_image_${data.user_id}`);
+        if (savedImage) setProfileImage(savedImage);
       } catch (error) {
         console.error('프로필 로딩 실패:', error);
       }
@@ -69,6 +72,9 @@ const MyScreen = () => {
         body: JSON.stringify({ user_nickname: editName })
       });
       setUserProfile({ ...userProfile, user_nickname: response.user_nickname || editName });
+      if (profileImage) {
+        await AsyncStorage.setItem(`profile_image_${userProfile.user_id}`, profileImage);
+      }
       setProfileModalVisible(false);
       Alert.alert('안내', '프로필이 성공적으로 업데이트 되었습니다.');
     } catch (e) {
