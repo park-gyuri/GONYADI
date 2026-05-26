@@ -34,6 +34,10 @@ export const RouteProvider = ({ children }) => {
       const { apiClient } = require('../api/apiClient');
       const { fetchReviews } = require('../api/reviewApi');
 
+      // 찜 데이터 복원 (로그아웃 후 재로그인 시에도 유지)
+      const savedLiked = await AsyncStorage.getItem('liked_reviews');
+      if (savedLiked) setLikedReviews(JSON.parse(savedLiked));
+
       // 1. 서버 데이터 병렬 호출
       const [serverFolders, serverRoutes, allServerReviews, userProfile] = await Promise.all([
         getFolders(),
@@ -95,16 +99,11 @@ export const RouteProvider = ({ children }) => {
     loadIfAuthenticated();
   }, []);
 
-  const clearRouteData = async () => {
+  const clearRouteData = () => {
     setFolders([]);
     setAllRoutes([]);
     setReviews([]);
     setLikedReviews({});
-    try {
-      await AsyncStorage.removeItem('liked_reviews');
-    } catch (e) {
-      console.error('찜 데이터 삭제 실패:', e);
-    }
   };
 
   const toggleFavorite = (id) => {
