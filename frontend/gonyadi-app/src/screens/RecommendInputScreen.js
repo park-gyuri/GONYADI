@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Alert, Platform } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { requestNewRoute } from '../api/routeApi';
-import { 
-  mockRouteResultBusan, 
-  mockRouteResultDaegu, 
-  mockRouteResultDaejeon, 
-  mockRouteResultJeju, 
-  mockRouteResultMungyeong, 
-  mockRouteResultOsaka, 
-  mockRouteResultPhuQuoc, 
+import {
+  mockRouteResultBusan,
+  mockRouteResultDaegu,
+  mockRouteResultDaejeon,
+  mockRouteResultJeju,
+  mockRouteResultMungyeong,
+  mockRouteResultOsaka,
+  mockRouteResultPhuQuoc,
   mockRouteResultSapporo,
-  mockApiData 
+  mockApiData
 } from '../data/dummyData';
 import PinIcon from '../components/icons/pinIcon';
 import CalenderIcon from '../components/icons/calenderIcon';
@@ -23,6 +23,7 @@ import PeopleIcon from '../components/icons/peopleIcon';
 import MoneyIcon from '../components/icons/moneyIcon';
 import ListIcon from '../components/icons/listIcon';
 import SendIcon from '../components/icons/sendIcon';
+import CategorySelectIcon from '../components/icons/categoryselectIcon';
 
 const RecommendInputScreen = () => {
   const router = useRouter();
@@ -54,6 +55,22 @@ const RecommendInputScreen = () => {
 
   // 로딩 상태 추가
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+  const loadingMessages = [
+    '사용자 요청사항을 분석하는 중...',
+    '최적의 여행 경로를 탐색하는 중...',
+    '주변 맛집과 명소를 찾는 중...',
+    '일정을 구성하는 중...',
+    '거의 다 됐어요! 마무리하는 중...'
+  ];
+
+  useEffect(() => {
+    if (!isLoading) { setLoadingMsgIndex(0); return; }
+    const timer = setInterval(() => {
+      setLoadingMsgIndex(prev => (prev + 1) % 5);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
 
   // 추가 요청사항
   const [userMessage, setUserMessage] = useState('');
@@ -90,20 +107,71 @@ const RecommendInputScreen = () => {
 
     setIsLoading(true);
     try {
+      // 지역명 → 좌표 변환 (RAG 파이프라인 활성화용)
+      // 백엔드 Places API를 사용하므로 프론트는 주요 지역 테이블로 빠르게 처리
+      const REGION_COORDS = {
+        '서울': { lat: 37.5665, lng: 126.9780 }, '부산': { lat: 35.1796, lng: 129.0756 },
+        '대구': { lat: 35.8714, lng: 128.6014 }, '인천': { lat: 37.4563, lng: 126.7052 },
+        '광주': { lat: 35.1595, lng: 126.8526 }, '대전': { lat: 36.3504, lng: 127.3845 },
+        '울산': { lat: 35.5384, lng: 129.3114 }, '세종': { lat: 36.4800, lng: 127.2890 },
+        '제주': { lat: 33.4996, lng: 126.5312 }, '경주': { lat: 35.8562, lng: 129.2247 },
+        '전주': { lat: 35.8242, lng: 127.1480 }, '여수': { lat: 34.7604, lng: 127.6622 },
+        '강릉': { lat: 37.7519, lng: 128.8761 }, '속초': { lat: 38.2070, lng: 128.5918 },
+        '춘천': { lat: 37.8747, lng: 127.7342 }, '수원': { lat: 37.2636, lng: 127.0286 },
+        '포항': { lat: 36.0190, lng: 129.3435 }, '통영': { lat: 34.8544, lng: 128.4330 },
+        '거제': { lat: 34.8800, lng: 128.6211 }, '안동': { lat: 36.5684, lng: 128.7294 },
+        '목포': { lat: 34.8118, lng: 126.3922 }, '순천': { lat: 34.9506, lng: 127.4873 },
+        '군산': { lat: 35.9676, lng: 126.7369 }, '경기': { lat: 37.2750, lng: 127.0094 },
+        '강원': { lat: 37.8228, lng: 128.1555 }, '충북': { lat: 36.6357, lng: 127.4913 },
+        '충남': { lat: 36.5184, lng: 126.8000 }, '전북': { lat: 35.8200, lng: 127.1089 },
+        '전남': { lat: 34.8679, lng: 126.9910 }, '경북': { lat: 36.4919, lng: 128.8889 },
+        '경남': { lat: 35.4606, lng: 128.2132 }, '평창': { lat: 37.3706, lng: 128.3904 },
+        '가평': { lat: 37.8314, lng: 127.5100 }, '남해': { lat: 34.8378, lng: 127.8925 },
+        '보령': { lat: 36.3333, lng: 126.6127 }, '태안': { lat: 36.7455, lng: 126.2980 },
+        '담양': { lat: 35.3214, lng: 126.9881 }, '하동': { lat: 35.0678, lng: 127.7514 },
+      };
+
+      const matchKey = Object.keys(REGION_COORDS).find(k => destination.includes(k));
+      let center_lat = matchKey ? REGION_COORDS[matchKey].lat : undefined;
+      let center_lng = matchKey ? REGION_COORDS[matchKey].lng : undefined;
+
+      if (matchKey) {
+        console.log(`[지역 좌표] ${destination} → (${center_lat}, ${center_lng})`);
+      } else {
+        // 하드코딩 테이블 미매칭 → Geocoding API 호출
+        console.log(`[지역 좌표] '${destination}' 매핑 없음 → Geocoding API 시도`);
+        try {
+          const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+          const geocodeResp = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination + ' 한국')}&language=ko&key=${apiKey}`
+          );
+          const geocodeData = await geocodeResp.json();
+          if (geocodeData.status === 'OK' && geocodeData.results.length > 0) {
+            const loc = geocodeData.results[0].geometry.location;
+            center_lat = loc.lat;
+            center_lng = loc.lng;
+            console.log(`[Geocoding] '${destination}' → (${center_lat}, ${center_lng})`);
+          } else {
+            console.warn(`[Geocoding] '${destination}' 변환 실패 (${geocodeData.status}) → 백엔드 폴백`);
+          }
+        } catch (geoErr) {
+          console.warn(`[Geocoding] 호출 오류 → 백엔드 폴백:`, geoErr.message);
+        }
+      }
+
       // 프론트엔드 UI 태그를 백엔드 스키마 Enum으로 변환
       const mappedTags = selectedTags.map(tag => {
-        if (tag === '음식') return '맛집';
-        if (tag === '액티비티') return '오락/레저';
-        if (tag === '뚜벅이') return '도보';
         return tag;
       });
 
       const validTransports = mappedTags.filter(tag => ['도보', '자동차', '자전거', '대중교통'].includes(tag));
-      const validThemes = mappedTags.filter(tag => ['힐링', '맛집', '사진', '전시', '체험', '카페', '오락/레저', '역사', '문화', '쇼핑', '축제', '자연'].includes(tag));
+      const validThemes = mappedTags.filter(tag => ['힐링', '맛집', '사진', '전시', '체험', '카페', '오락', '레저', '역사', '문화', '쇼핑', '축제', '자연'].includes(tag));
       const validConditions = mappedTags.filter(tag => ['휠체어', '반려동물 동반', '어린이 동반'].includes(tag));
 
       const formData = {
         region: destination,
+        center_lat,
+        center_lng,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
         nights: nights ? parseInt(nights, 10) : undefined,
@@ -118,10 +186,53 @@ const RecommendInputScreen = () => {
 
       console.log('API Request Payload:', formData);
 
-      // 🌟 백엔드 API 호출로 복구
       const data = await requestNewRoute(formData);
-
       setIsLoading(false);
+
+      // 후보 장소 부족 시 사용자에게 선택권 부여
+      if (data.insufficient_candidates) {
+        const currentRadius = data.current_radius_km || 15;
+        const nextRadius = currentRadius < 20 ? 30 : 50;
+        Alert.alert(
+          '',
+          data.shortage_message,
+          [
+            {
+              text: `반경 넓히기 (${nextRadius}km)`,
+              onPress: async () => {
+                setIsLoading(true);
+                try {
+                  const expandedData = await requestNewRoute({ ...formData, radius_km: nextRadius });
+                  setIsLoading(false);
+                  router.push({
+                    pathname: '/route-result',
+                    params: {
+                      response: JSON.stringify(expandedData),
+                      originalRequest: JSON.stringify({ ...formData, radius_km: nextRadius }),
+                    }
+                  });
+                } catch (err) {
+                  setIsLoading(false);
+                  Alert.alert('에러', '경로 추천을 가져오는데 실패했습니다.');
+                }
+              },
+            },
+            {
+              text: '현재 결과로 보기',
+              onPress: () => router.push({
+                pathname: '/route-result',
+                params: {
+                  response: JSON.stringify(data),
+                  originalRequest: JSON.stringify(formData),
+                }
+              }),
+            },
+          ],
+          { cancelable: false }
+        );
+        return;
+      }
+
       router.push({
         pathname: '/route-result',
         params: {
@@ -279,12 +390,18 @@ const RecommendInputScreen = () => {
     setSelectedTags(selectedTags.filter((tag) => tag !== tagToRemove));
   };
 
-  // 태그 추가 함수 (바텀 시트에서 선택 시)
-  const handleAddTag = (newTag) => {
-    if (!selectedTags.includes(newTag)) {
-      setSelectedTags([...selectedTags, newTag]);
-      setIsTagError(false); // 새로운 태그가 추가되면 에러 강제 해제
+  // 태그 토글 함수 (바텀 시트에서 다중 선택/해제)
+  const handleToggleTag = (tag) => {
+    if (selectedTags.includes(tag)) {
+      setSelectedTags(selectedTags.filter(t => t !== tag));
+    } else {
+      setSelectedTags([...selectedTags, tag]);
+      setIsTagError(false);
     }
+  };
+
+  // 모달 완료 버튼
+  const handleConfirmTags = () => {
     setModalVisible(false);
   };
 
@@ -305,7 +422,8 @@ const RecommendInputScreen = () => {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled={true}
         enableOnAndroid={true}
-        extraScrollHeight={20}
+        extraScrollHeight={Platform.OS === 'ios' ? 80 : 20}
+        enableResetScrollToCoords={false}
       >
         <View style={styles.formBox}>
 
@@ -432,14 +550,14 @@ const RecommendInputScreen = () => {
             </View>
           </View>
 
+          {/* ===== 여행 테마 (카테고리) 독립 섹션 ===== */}
           <View style={[styles.inputSection, { zIndex: 1 }]}>
             <View style={styles.labelRow}>
-              <ListIcon width={18} height={18} />
-              <Text style={styles.labelWithIcon}>상세 요청</Text>
+              <CategorySelectIcon width={20} height={20} />
+              <Text style={styles.labelWithIcon}>여행 테마</Text>
             </View>
-            <View style={[styles.textAreaWrapper, isTagError && styles.errorBorder]}>
+            <View style={[styles.tagSectionWrapper, isTagError && styles.errorBorder]}>
               <View style={styles.tagRow}>
-
                 {selectedTags.map((tag, index) => (
                   <View key={index} style={styles.tag}>
                     <Text style={styles.tagText}>{tag}</Text>
@@ -448,29 +566,37 @@ const RecommendInputScreen = () => {
                     </TouchableOpacity>
                   </View>
                 ))}
-
                 <TouchableOpacity style={styles.tagPlus} onPress={() => setModalVisible(true)}>
                   <Text style={styles.tagPlusText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TextInput
-                style={styles.textArea}
-                multiline
-                placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어."
-                value={userMessage}
-                onChangeText={setUserMessage}
-              />
             </View>
-
-            {/* 하단 경고 문구 표시: 태그 개수 검증 에러 */}
             {isTagError && (
               <Text style={styles.errorText}>* 카테고리를 1개 이상 골라주세요.</Text>
             )}
           </View>
 
+          {/* ===== 상세 요청 (LLM 텍스트 전용) ===== */}
+          <View style={[styles.inputSection, { zIndex: 1 }]}>
+            <View style={styles.labelRow}>
+              <ListIcon width={18} height={18} />
+              <Text style={styles.labelWithIcon}>상세 요청</Text>
+            </View>
+            <View style={styles.textAreaWrapper}>
+              <TextInput
+                style={styles.textArea}
+                multiline
+                placeholder="예: 경기도 위주로 힐링 여행 추천해줘. 맛집 탐방을 하고 싶어."
+                placeholderTextColor="#999"
+                value={userMessage}
+                onChangeText={setUserMessage}
+              />
+            </View>
+          </View>
+
           <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={isLoading}>
             {isLoading ? (
-              <Text style={styles.submitButtonText}>경로 탐색 중... 잠시만 기다려주세요</Text>
+              <Text style={styles.submitButtonText}>{loadingMessages[loadingMsgIndex]}</Text>
             ) : (
               <>
                 <SendIcon width={20} height={20} style={{ marginRight: 8 }} />
@@ -494,33 +620,48 @@ const RecommendInputScreen = () => {
 
               <Text style={styles.categorySectionTitle}>이동수단</Text>
               <View style={styles.categoryTagsWrapper}>
-                {['도보', '자동차', '자전거', '대중교통'].map((item) => (
-                  <TouchableOpacity key={item} style={styles.categoryTag} onPress={() => handleAddTag(item)}>
-                    <Text style={styles.categoryTagText}>{item}</Text>
-                  </TouchableOpacity>
-                ))}
+                {['도보', '자동차', '자전거', '대중교통'].map((item) => {
+                  const isSelected = selectedTags.includes(item);
+                  return (
+                    <TouchableOpacity key={item} style={[styles.categoryTag, isSelected && styles.categoryTagSelected]} onPress={() => handleToggleTag(item)}>
+                      <Text style={[styles.categoryTagText, isSelected && styles.categoryTagTextSelected]}>{item}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <Text style={styles.categorySectionTitle}>여행테마</Text>
               <View style={styles.categoryTagsWrapper}>
-                {['힐링', '음식', '카페', '사진', '전시', '체험', '쇼핑', '역사', '축제', '자연', '액티비티'].map((item) => (
-                  <TouchableOpacity key={item} style={styles.categoryTag} onPress={() => handleAddTag(item)}>
-                    <Text style={styles.categoryTagText}>{item}</Text>
-                  </TouchableOpacity>
-                ))}
+                {['힐링', '맛집', '카페', '사진', '전시', '체험', '쇼핑', '역사', '문화', '축제', '자연', '오락', '레저'].map((item) => {
+                  const isSelected = selectedTags.includes(item);
+                  return (
+                    <TouchableOpacity key={item} style={[styles.categoryTag, isSelected && styles.categoryTagSelected]} onPress={() => handleToggleTag(item)}>
+                      <Text style={[styles.categoryTagText, isSelected && styles.categoryTagTextSelected]}>{item}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <Text style={styles.categorySectionTitle}>여행조건</Text>
               <View style={styles.categoryTagsWrapper}>
-                {['휠체어', '반려동물 동반', '어린이 동반'].map((item) => (
-                  <TouchableOpacity key={item} style={styles.categoryTag} onPress={() => handleAddTag(item)}>
-                    <Text style={styles.categoryTagText}>{item}</Text>
-                  </TouchableOpacity>
-                ))}
+                {['휠체어', '반려동물 동반', '어린이 동반'].map((item) => {
+                  const isSelected = selectedTags.includes(item);
+                  return (
+                    <TouchableOpacity key={item} style={[styles.categoryTag, isSelected && styles.categoryTagSelected]} onPress={() => handleToggleTag(item)}>
+                      <Text style={[styles.categoryTagText, isSelected && styles.categoryTagTextSelected]}>{item}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
-              <View style={{ height: 40 }} />
+              <View style={{ height: 20 }} />
             </ScrollView>
+
+            {/* 완료 버튼 */}
+            <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleConfirmTags}>
+              <Text style={styles.modalConfirmText}>완료</Text>
+            </TouchableOpacity>
+            <View style={{ height: Platform.OS === 'ios' ? 20 : 10 }} />
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -602,14 +743,15 @@ const styles = StyleSheet.create({
   counterValue: { fontSize: 16, fontWeight: 'bold' },
   counterDivider: { width: 1, height: '100%', backgroundColor: '#E0E0E0' },
   textAreaWrapper: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, backgroundColor: '#FFFFFF', minHeight: 120 },
-  tagRow: { flexDirection: 'row', marginBottom: 12, flexWrap: 'wrap' },
+  tagSectionWrapper: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, backgroundColor: '#FFFFFF' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap' },
   tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 16, paddingVertical: 6, paddingLeft: 12, paddingRight: 6, marginRight: 6, marginBottom: 6 },
   tagText: { fontSize: 13, color: '#333' },
   tagDeleteBtn: { paddingHorizontal: 6, marginLeft: 2 },
   tagDeleteText: { fontSize: 12, color: '#8E9EAB' },
   tagPlus: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 16, width: 36, height: 32, marginBottom: 6 },
   tagPlusText: { fontSize: 14, color: '#555' },
-  textArea: { flex: 1, fontSize: 14, color: '#333', textAlignVertical: 'top' },
+  textArea: { flex: 1, fontSize: 14, color: '#333', textAlignVertical: 'top', minHeight: 96 },
   submitButton: { flexDirection: 'row', backgroundColor: '#AEE4D7', borderRadius: 8, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   submitButtonText: { fontSize: 16, fontWeight: 'bold', color: '#111' },
 
@@ -620,7 +762,11 @@ const styles = StyleSheet.create({
   categorySectionTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#333' },
   categoryTagsWrapper: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 24 },
   categoryTag: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFFFFF', marginRight: 8, marginBottom: 8 },
+  categoryTagSelected: { borderColor: '#43B0AB', borderWidth: 2, backgroundColor: '#E0F7F5' },
   categoryTagText: { fontSize: 14, color: '#555' },
+  categoryTagTextSelected: { color: '#43B0AB', fontWeight: 'bold' },
+  modalConfirmBtn: { backgroundColor: '#43B0AB', paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 4 },
+  modalConfirmText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
 
   dropdownList: { position: 'absolute', top: 75, left: 0, right: 0, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 10, zIndex: 1000 },
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },

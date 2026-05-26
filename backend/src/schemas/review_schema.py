@@ -18,6 +18,14 @@ class ReviewListItem(BaseModel):
     thumbnail: Optional[str] = None
     region: Optional[str] = None
     created_at: datetime
+    like_count: int = 0
+
+class TopLikedReview(BaseModel):
+    review_pk: int
+    title: str
+    region: Optional[str] = None
+    thumbnail: Optional[str] = None
+    like_count: int = 0
 
 class ReviewDetailResponse(BaseModel):
     review_pk: int

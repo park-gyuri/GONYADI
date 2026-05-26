@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, ToastAndroid, Alert, ActivityIndicator, PanResponder, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, ToastAndroid, Alert, ActivityIndicator, PanResponder, Keyboard, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 // react-native-maps는 Expo Go에서 지원되지 않으므로 안전하게 불러오기
@@ -306,17 +306,22 @@ const RouteResultScreen = () => {
   // 백엔드 데이터(places) 또는 더미 데이터(schedule)를 프론트엔드 UI에 맞게 변환
   const [daysData, setDaysData] = useState(() => {
     if (apiData?.schedule) {
-      // 1. dummyData.js의 schedule 형식이 있는 경우 (Day 1, 2, 3 지원)
+      // 1. 백엔드 schedule 형식 (Day 1, 2, 3 지원)
       const data = {};
       apiData.schedule.forEach(dayInfo => {
-        data[dayInfo.day] = dayInfo.places.map((place, index) => ({
-          id: place.id || `${dayInfo.day}-${index}`,
-          name: place.name,
-          address: place.address || place.description,
-          transport: place.transport ? `${place.transport.type} ${place.transport.duration}` : null,
-          lat: place.lat || (35.10 + Math.random() * 0.05), // 위치 정보 없으면 랜덤 (데모용)
-          lng: place.lng || (129.04 + Math.random() * 0.05)
-        }));
+        data[dayInfo.day] = dayInfo.places.map((place, index) => {
+          const segment = routeSegments.find(seg => seg.from_name === place.name) || null;
+          return {
+            id: place.id || `${dayInfo.day}-${index}`,
+            name: place.name,
+            address: place.address || place.description || place.reason,
+            transportSegment: segment,
+            lat: place.lat || (35.10 + Math.random() * 0.05),
+            lng: place.lng || (129.04 + Math.random() * 0.05),
+            accessibilityUnconfirmed: place.accessibility_unconfirmed || false,
+            petUnconfirmed: place.pet_unconfirmed || false,
+          };
+        });
       });
       return data;
     } else {
@@ -393,6 +398,28 @@ const RouteResultScreen = () => {
     });
   };
 
+  const handleShare = async () => {
+    const region = originalRequest?.region || '여행';
+    const days = Object.keys(daysData).sort((a, b) => a - b);
+
+    const lines = [`🗺️ ${region} ${days.length}일 여행 경로`, ''];
+    days.forEach(day => {
+      lines.push(`[ ${day}일차 ]`);
+      (daysData[day] || []).forEach((place, i) => {
+        lines.push(`  ${i + 1}. ${place.name}`);
+        if (place.address) lines.push(`     ${place.address}`);
+      });
+      lines.push('');
+    });
+    lines.push('GONYADI 앱으로 만든 여행 경로입니다.');
+
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch (e) {
+      Alert.alert('공유 실패', e.message);
+    }
+  };
+
   // 수정사항 전송 (재추천 요청)
   const handleModifySubmit = async () => {
     if (!modifyText.trim()) {
@@ -405,8 +432,8 @@ const RouteResultScreen = () => {
       const { requestNewRoute } = require('../api/routeApi');
 
       // 현재 화면의 장소 목록 (삭제 반영된 상태)을 전달
-      const currentPlaces = daysData[selectedDay] || [];
-      const placesForApi = currentPlaces.map(p => ({
+      const allCurrentPlaces = Object.values(daysData).flat();
+      const placesForApi = allCurrentPlaces.map(p => ({
         name: p.name,
         lat: p.lat ?? 0,
         lng: p.lng ?? 0,
@@ -415,13 +442,19 @@ const RouteResultScreen = () => {
         category: '관광',
       }));
 
+      // 사용자 메시지에서 테마 키워드를 감지해 원본 테마와 합산
+      const ALL_THEMES = ['힐링', '맛집', '카페', '사진', '전시', '체험', '쇼핑', '역사', '문화', '축제', '자연', '오락', '레저'];
+      const detectedThemes = ALL_THEMES.filter(t => modifyText.includes(t));
+      const baseThemes = originalRequest?.themes ?? ['힐링'];
+      const mergedThemes = [...new Set([...baseThemes, ...detectedThemes])];
+
       const modifyData = {
         region: originalRequest?.region || '알 수 없음',
         nights: originalRequest?.nights ?? 1,
         days: originalRequest?.days ?? 2,
         number_of_people: originalRequest?.number_of_people ?? 2,
         transports: originalRequest?.transports ?? ['도보'],
-        themes: originalRequest?.themes ?? ['힐링'],
+        themes: mergedThemes,
         conditions: originalRequest?.conditions ?? [],
         start_date: originalRequest?.start_date ?? undefined,
         end_date: originalRequest?.end_date ?? undefined,
@@ -706,6 +739,12 @@ const RouteResultScreen = () => {
                         ]}>{place.name}</Text>
                       </View>
                       <Text style={styles.placeAddress}>{place.address}</Text>
+                      {place.accessibilityUnconfirmed && (
+                        <Text style={styles.accessibilityWarning}>⚠ 접근성 미확인</Text>
+                      )}
+                      {place.petUnconfirmed && (
+                        <Text style={styles.accessibilityWarning}>⚠ 반려동물 동반 가능 여부 미확인</Text>
+                      )}
                     </View>
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}>
                       <WastebasketIcon width={20} height={20} color="#A9E2D9" />
@@ -756,7 +795,7 @@ const RouteResultScreen = () => {
           </View>
 
           <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
               <Text style={styles.actionBtnText}>공유하기</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={() => setSaveModalVisible(true)}>
@@ -861,6 +900,7 @@ const styles = StyleSheet.create({
   placeNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   placeNameText: { fontSize: 18, fontWeight: 'bold', color: '#111', marginLeft: 8 },
   placeAddress: { fontSize: 13, color: '#777', marginLeft: 30 },
+  accessibilityWarning: { fontSize: 11, color: '#E07B39', marginLeft: 30, marginTop: 3 },
   deleteBtn: { padding: 5 },
   
   transportRow: { paddingLeft: 16, paddingVertical: 8 },

@@ -14,7 +14,8 @@ class ThemeCategories(StrEnum):
     EXHIBIT  = "전시"
     ACTIVITY = "체험"
     CAFE     = "카페"
-    LEISURE  = "오락/레저"
+    ARCADE   = "오락"
+    LEISURE  = "레저"
     HISTORY  = "역사"
     CULTURE  = "문화"
     SHOPPING = "쇼핑"
@@ -38,30 +39,37 @@ class ConditionCategories(StrEnum):
 # ── Gemini에게 추천받을 장소 스키마 ───────────────────────────────────────
 class PlaceResult(BaseModel):
     # Gemini가 추천하는 장소 하나
-    name:        str    # 장소 이름
-    lat:         float  # 위도
-    lng:         float  # 경도
-    reason:      str    # 추천 사유
-    duration:    int    # 예상 소요 시간 (분)
-    category:    str    # 장소 카테고리
+    name:                     str   # 장소 이름
+    lat:                      float # 위도
+    lng:                      float # 경도
+    reason:                   str   # 추천 사유
+    duration:                 int   # 예상 소요 시간 (분)
+    category:                 str   # 장소 카테고리
+    accessibility_unconfirmed: bool = False  # 휠체어 조건 시 접근성 미확인 장소 여부
+    pet_unconfirmed:           bool = False  # 반려동물 조건 시 동반 가능 여부 미확인
 
 
 # ── [RAG] DB에서 꺼낸 후보 장소 스키마 ────────────────────────────────────────
 class PlaceCandidate(BaseModel):
     """DB의 Places 테이블에서 조회한 후보 장소 (LLM에게 넘겨줄 데이터)"""
-    place_pk:    int    # DB PK (LLM이 이 ID로만 선택)
-    name:        str
-    lat:         float
-    lng:         float
-    category:    str
-    distance_km: float  # 중심점으로부터의 거리
+    place_pk:        int
+    name:            str
+    lat:             float
+    lng:             float
+    category:        str
+    distance_km:     float
+    is_pet_friendly:     Optional[bool] = None  # None=미확인, True=가능
+    is_accessible:       Optional[bool] = None  # None=미확인, True=무장애 가능
+    festival_start_date: Optional[str]  = None  # YYYYMMDD
+    festival_end_date:   Optional[str]  = None  # YYYYMMDD
 
 
 # ── [RAG] LLM(Gemini)이 후보 리스트를 보고 반환하는 최소 스키마 ──────────────────
 class CuratedPlaceResult(BaseModel):
     """Gemini가 후보 리스트 안에서만 선택해 반환하는 스키마 (새 장소 생성 금지)"""
     place_pk: int   # PlaceCandidate.place_pk 중 하나여야 함
-    order:    int   # 방문 순서 (1부터 시작)
+    day:      int   # 여행 일차 (1부터 시작)
+    order:    int   # 해당 일차 내 방문 순서 (1부터 시작)
     reason:   str   # 추천 사유
     duration: int   # 예상 소요 시간 (분)
 
@@ -89,7 +97,7 @@ class RecommendRequest(BaseModel):
 
     # 카테고리
     transports: list[TransportCategories] = Field(..., min_length=1, max_length=3)
-    themes: list[ThemeCategories] = Field(..., min_length=1, max_length=9)
+    themes: list[ThemeCategories] = Field(..., min_length=1, max_length=13)
     conditions: list[ConditionCategories] = Field(default=[])
 
     # 상세 요청 
@@ -207,12 +215,14 @@ class DaySchedule(BaseModel):
 # ── 프론트 응답 스키마 ───────────────────────────────────────────────────
 
 class RecommendResponse(BaseModel):
-    status:         str                 # "completed" - 현재 상태
-    prompt_preview: str                 # 실제로 AI에 넘길 프롬프트 (디버그용)
-    schedule:       list[DaySchedule]   # 일차별 장소 (1일차, 2일차 ...)
-    places:         list[PlaceResult]   # 전체 장소 flat 리스트 (하위 호환)
-    route_segments: list[RouteSegment]  # 일차 내 장소 간 이동 경로
-    # message:        str  # 프론트 로딩 화면(화면 B)에 보여줄 문구
+    status:                  str                 # "completed" - 현재 상태
+    prompt_preview:          str                 # 실제로 AI에 넘길 프롬프트 (디버그용)
+    schedule:                list[DaySchedule]   # 일차별 장소 (1일차, 2일차 ...)
+    places:                  list[PlaceResult]   # 전체 장소 flat 리스트 (하위 호환)
+    route_segments:          list[RouteSegment]  # 일차 내 장소 간 이동 경로
+    insufficient_candidates: bool  = False       # 후보 장소 부족 여부
+    shortage_message:        str   = ""          # 부족 안내 문구 (프론트 팝업용)
+    current_radius_km:       float = 0.0         # 이번 검색에 사용된 반경 (km)
 
 
 

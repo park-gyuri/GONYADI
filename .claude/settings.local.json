@@ -21,7 +21,9 @@
       "Bash(python -m alembic current)",
       "Bash(python -c ' *)",
       "Bash(findstr /V \"INFO WARNING DETAIL HINT DEBUG BEGIN ROLLBACK generated pg_catalog current_schema standard\")",
-      "Bash(curl -s --max-time 5 http://localhost:8080/api/v1/itineraries)"
+      "Bash(curl -s --max-time 5 http://localhost:8080/api/v1/itineraries)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)"
     ]
   }
 }

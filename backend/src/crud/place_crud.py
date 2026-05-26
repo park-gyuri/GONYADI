@@ -121,7 +121,6 @@ def retrieve_candidates_by_location(
     """
     # 카테고리 필터 조건 (없으면 전체)
     if categories:
-        # SQLite 호환을 위해 Python-side 필터를 섞지 않고 IN 절 사용
         category_placeholders = ", ".join([f":cat{i}" for i in range(len(categories))])
         cat_filter = f"AND category IN ({category_placeholders})"
         cat_params = {f"cat{i}": c for i, c in enumerate(categories)}
@@ -136,9 +135,13 @@ def retrieve_candidates_by_location(
             lat,
             lng,
             category,
+            is_pet_friendly,
+            is_accessible,
+            festival_start_date,
+            festival_end_date,
             (
                 6371 * acos(
-                    LEAST(1.0, 
+                    LEAST(1.0,
                         cos(radians(:center_lat)) * cos(radians(lat))
                         * cos(radians(lng) - radians(:center_lng))
                         + sin(radians(:center_lat)) * sin(radians(lat))
@@ -178,6 +181,10 @@ def retrieve_candidates_by_location(
             lng=row.lng,
             category=row.category,
             distance_km=round(row.distance_km, 3),
+            is_pet_friendly=row.is_pet_friendly,
+            is_accessible=row.is_accessible,
+            festival_start_date=row.festival_start_date,
+            festival_end_date=row.festival_end_date,
         )
         for row in rows
     ]
@@ -210,11 +217,21 @@ def bulk_upsert_places(places_data: list[dict], session: Session) -> list[Places
             ).first()
 
         if existing:
-            # 기존 데이터 업데이트 (좌표·주소만 갱신)
+            # 기존 데이터 업데이트
             if gid and not existing.google_place_id:
                 existing.google_place_id = gid
             if data.get("address") and not existing.address:
                 existing.address = data["address"]
+            # 조건 플래그: True로 확인된 값은 덮어쓰지 않음 (None으로 강등 방지)
+            if data.get("is_pet_friendly") is True:
+                existing.is_pet_friendly = True
+            if data.get("is_accessible") is True:
+                existing.is_accessible = True
+            # 축제 날짜: 새 값이 있으면 덮어쓰기 (날짜는 매년 갱신될 수 있음)
+            if data.get("festival_start_date"):
+                existing.festival_start_date = data["festival_start_date"]
+            if data.get("festival_end_date"):
+                existing.festival_end_date = data["festival_end_date"]
             session.add(existing)
             saved.append(existing)
         else:
@@ -227,6 +244,10 @@ def bulk_upsert_places(places_data: list[dict], session: Session) -> list[Places
                 google_place_id=gid,
                 address=data.get("address"),
                 rating=data.get("rating"),
+                is_pet_friendly=data.get("is_pet_friendly"),
+                is_accessible=data.get("is_accessible"),
+                festival_start_date=data.get("festival_start_date"),
+                festival_end_date=data.get("festival_end_date"),
             )
             session.add(new_place)
             session.flush()

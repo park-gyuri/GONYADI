@@ -1,16 +1,18 @@
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, ActivityIndicator, Share, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
 import PencilIcon from '../components/icons/pencilIcon';
 import HeartIcon from '../components/icons/heartIcon';
+import ShareIcon from '../components/icons/shareIcon';
 import { fetchReviews } from '../api/reviewApi';
+import { useRoutes } from '../context/RouteContext';
 
 const ReviewScreen = () => {
   const router = useRouter();
-  const [likedReviews, setLikedReviews] = useState({});
+  const { likedReviews, toggleLikedReview } = useRoutes();
   const [searchQuery, setSearchQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [reviews, setReviews] = useState([]);
@@ -31,10 +33,6 @@ const ReviewScreen = () => {
     load();
   }, []));
 
-  const toggleLike = (id) => {
-    setLikedReviews(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
   // 검색어 기반 필터링
   const filteredReviews = reviews.filter(r => {
     if (!searchQuery.trim()) return true;
@@ -45,6 +43,19 @@ const ReviewScreen = () => {
       r.region?.toLowerCase().includes(q)
     );
   });
+
+  const handleShare = async (review) => {
+    const lines = [];
+    if (review.title) lines.push(review.title);
+    if (review.region) lines.push(`📍 ${review.region}`);
+    if (review.preview_comment) lines.push(review.preview_comment);
+    lines.push(`\nGONYADI 앱에서 보기 👉 gonyadi://review-detail?id=${review.review_pk}&type=db`);
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch (e) {
+      Alert.alert('공유 실패', e.message);
+    }
+  };
 
   // 연관 검색어 (title, region 기반)
   const allKeywords = Array.from(new Set(
@@ -117,10 +128,29 @@ const ReviewScreen = () => {
                 ) : (
                   <View style={styles.imagePlaceholder} />
                 )}
-                <TouchableOpacity style={styles.heartBtn} onPress={() => toggleLike(review.review_pk)}>
-                  <HeartIcon isFilled={!!likedReviews[review.review_pk]} />
-                </TouchableOpacity>
               </View>
+
+              <View style={styles.cardInfoRow}>
+                <View style={styles.userInfo}>
+                  {/* 프로필 이미지 추후 서버 데이터로 연동 가능하도록 더미 */}
+                  <View style={styles.userAvatarPlaceholder}>
+                    <Text style={styles.userAvatarText}>{review.author?.substring(0,1) || '유'}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.userName}>{review.author || '익명 사용자'}</Text>
+                    <Text style={styles.postDate}>{review.created_at ? review.created_at.substring(0, 10).replace(/-/g, '년 ').replace('년 ', '년 ').replace(' ', '') + '일' : '2025년 8월 12일'}</Text>
+                  </View>
+                </View>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleShare(review)}>
+                    <ShareIcon width={24} height={24} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.actionBtn, { paddingRight: 0 }]} onPress={() => toggleLikedReview(review.review_pk)}>
+                    <HeartIcon isFilled={!!likedReviews[review.review_pk]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <View style={styles.textSection}>
                 <Text style={styles.reviewTitle} numberOfLines={1}>{review.title}</Text>
                 <Text style={styles.reviewContent} numberOfLines={2}>{review.preview_comment}</Text>
@@ -178,26 +208,58 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#C4CCD8',
+    borderColor: '#E8ECEF', // 조금 더 부드러운 테두리
     overflow: 'hidden',
+    paddingBottom: 8, // 하단 여백 추가
   },
   imageSection: {
     paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 4,
     alignItems: 'center',
-    position: 'relative',
   },
   imagePlaceholder: {
     width: '100%',
-    height: 200,
+    height: 180, // 높이를 조금 줄여 시원한 비율
     backgroundColor: '#EAF3FA',
     borderRadius: 16,
   },
-  heartBtn: { position: 'absolute', top: 25, right: 25, zIndex: 11 },
-  textSection: { padding: 20 },
-  reviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', marginBottom: 8 },
-  reviewContent: { fontSize: 13, color: '#666', lineHeight: 18 },
+  
+  cardInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0F0F0',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  userAvatarText: { color: '#888', fontSize: 12 },
+  userName: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+  postDate: { fontSize: 11, color: '#999', marginTop: 2 },
+  
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionBtn: { padding: 8, marginLeft: 4, justifyContent: 'center', alignItems: 'center' },
+
+  textSection: { paddingHorizontal: 20, paddingBottom: 20 },
+  reviewTitle: { fontSize: 17, fontWeight: 'bold', color: '#111', marginBottom: 10 },
+  reviewContent: { fontSize: 14, color: '#666', lineHeight: 20 },
 
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 15, textAlign: 'center', lineHeight: 24 },
