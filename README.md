@@ -2,7 +2,7 @@
 ''' 최초 1회 연동 (내 컴퓨터의 c에 GONYADI가 존재하는 경우)'''
 ```bash
 cd c/GONYADI 
-git clone https://github.com/park-gyuri/GONYADI.git .
+git clone https://github.com/park-gyuri/GONYADI.git 
 
 
 ''' 작업 전 '''
@@ -17,7 +17,7 @@ git merge main # 코드가 최신 main보다 뒤쳐졌을 때 main 코드를 가
 
 
 ''' 작업 후 저장 '''
-git status
+git statusc
 git add .
 git commit -m "아래 규칙에 따라 커밋 메시지 작성"
 # 태그: 설명

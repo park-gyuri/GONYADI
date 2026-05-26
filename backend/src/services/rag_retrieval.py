@@ -15,6 +15,7 @@ API 레이어(recommend_api.py)에서 이 함수 하나만 호출하면
 import asyncio
 import httpx
 import os
+import random
 from sqlmodel import Session
 
 from src.schemas.recommend_schema import PlaceCandidate, RecommendRequest
@@ -235,7 +236,7 @@ async def _fetch_google_places_text_search(
 async def retrieve_and_filter_candidates(
     req: RecommendRequest,
     session: Session,
-) -> tuple[list[PlaceCandidate], float]:
+) -> tuple[list[PlaceCandidate], list[PlaceCandidate], float]:
     """
     RAG 파이프라인 Step 1 + 2 + 4를 통합 실행한다.
 
@@ -248,14 +249,17 @@ async def retrieve_and_filter_candidates(
     4. center_lat/lng가 없으면 빈 리스트 반환 (기존 Hallucination 방식 fallback)
 
     Returns:
-        list[PlaceCandidate]: 필터링 완료된 후보 풀 (LLM에게 넘길 데이터)
+        filtered       : Spatial Filter 통과 후보 (최대 20개) — 1차 Gemini 큐레이션용
+        pre_filtered   : 랜덤 서브샘플 후보 (최대 30개) — 2차 Gemini 검토·교체용
+        used_radius_km : 실제 사용된 검색 반경
+
     """
     transport_names = [t.value for t in req.transports]
     theme_names = [th.value for th in req.themes]
 
     if req.center_lat is None or req.center_lng is None:
         print("[RAG] center_lat/lng 없음 → 기존 Gemini 단독 방식으로 fallback")
-        return [], 0.0
+        return [], [], 0.0
 
     # 검색 반경 결정 (요청에 명시되면 그대로, 없으면 이동수단 기반 자동)
     radius_km = req.radius_km if req.radius_km is not None else auto_radius_km(transport_names)
@@ -395,10 +399,19 @@ async def retrieve_and_filter_candidates(
             )
 
     # ── Step 2: Spatial Filtering ─────────────────────────────────────────────
+    # 오버샘플(60개) 중 30개를 랜덤 서브샘플 → 매 요청마다 후보 풀에 다양성 부여
+    _SUBSAMPLE_SIZE = 30
+    if len(candidates) > _SUBSAMPLE_SIZE:
+        candidates = random.sample(candidates, _SUBSAMPLE_SIZE)
+        print(f"[RAG] 랜덤 서브샘플: {_SUBSAMPLE_SIZE}개 선택")
+
+    # 서브샘플 전체를 보존 — 2차 Gemini 검토 시 교체 후보로 사용
+    pre_filtered = list(candidates)
+
     filtered = spatial_filter(
         candidates=candidates,
         max_pair_dist_km=max_pair,
         max_result=20,
     )
 
-    return filtered, radius_km
+    return filtered, pre_filtered, radius_km

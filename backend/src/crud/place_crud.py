@@ -112,7 +112,7 @@ def retrieve_candidates_by_location(
     radius_km: float,
     categories: Optional[list[str]],
     session: Session,
-    limit: int = 30,
+    limit: int = 60,
 ) -> list[PlaceCandidate]:
     """
     중심 좌표(lat, lng) 기준 반경 radius_km 이내의 DB 장소를 조회한다.

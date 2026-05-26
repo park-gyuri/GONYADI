@@ -119,7 +119,7 @@ async def handle_recommendation(
 
     # ── RAG 파이프라인 ────────────────────────────────────────────────────────
     print(f"[추천] RAG 파이프라인 실행 (center={center_lat},{center_lng})")
-    candidates, used_radius_km = await retrieve_and_filter_candidates(req, session)
+    candidates, review_candidates, used_radius_km = await retrieve_and_filter_candidates(req, session)
 
     if not candidates:
         raise HTTPException(
@@ -135,7 +135,7 @@ async def handle_recommendation(
         shortage_msg = f"'{theme_str}' 장소가 부족합니다. 검색 반경을 넓히시겠습니까?"
         print(f"[추천] 후보 부족 ({len(candidates)}개 < {MIN_CANDIDATES}개) — 프론트 팝업 트리거")
 
-    # ── Gemini Curation (1차: 후보 풀에서 장소 선택, day 경계 포함) ───────────
+    # ── Gemini Curation (1차: Spatial Filter 통과 후보 20개에서 장소 선택) ──────
     # 동기 Gemini 함수를 스레드풀에서 실행해 async 이벤트 루프 블록 방지
     rag_prompt = build_rag_prompt(req, candidates)
     condition_values = [c.value for c in req.conditions]
@@ -145,9 +145,10 @@ async def handle_recommendation(
     )
 
     # ── AI 검토 (2차: 중복·비현실적 동선 감지 및 보정) ────────────────────────
+    # review_candidates(30개)를 사용해 1차에서 쓰지 않은 장소로도 교체 가능
     if schedule:
         schedule = await loop.run_in_executor(
-            None, critique_and_revise_itinerary, schedule, candidates, total_days, condition_values
+            None, critique_and_revise_itinerary, schedule, review_candidates, total_days, condition_values
         )
 
     if not schedule:
@@ -166,8 +167,8 @@ async def handle_recommendation(
         ]
         schedule = _flat_to_schedule(fallback_places, total_days)
 
-    # DB 플래그 기반 뱃지 설정
-    candidate_map = {c.name: c for c in candidates}
+    # DB 플래그 기반 뱃지 설정 (2차 검토에서 교체된 장소 포함하도록 review_candidates 기준)
+    candidate_map = {c.name: c for c in review_candidates}
     is_pet_condition        = "반려동물 동반" in condition_values
     is_wheelchair_condition = "휠체어" in condition_values
     print(f"[뱃지] 조건: pet={is_pet_condition}, wheelchair={is_wheelchair_condition}")
