@@ -27,3 +27,12 @@ def get_user_by_email(user_email: str, session: Session):
 def get_user_by_id(user_id: str, session: Session):
     statement = select(Users).where(Users.user_id == user_id)
     return session.exec(statement).first()
+
+def update_user(user: Users, user_data: dict, session: Session):
+    for key, value in user_data.items():
+        if value is not None:
+            setattr(user, key, value)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user

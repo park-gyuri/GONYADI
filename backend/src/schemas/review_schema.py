@@ -17,6 +17,7 @@ class ReviewListItem(BaseModel):
     preview_comment: Optional[str] = None
     thumbnail: Optional[str] = None
     region: Optional[str] = None
+    author: Optional[str] = None
     created_at: datetime
     like_count: int = 0
 

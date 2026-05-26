@@ -17,12 +17,20 @@ const ALL_MOCK_DATA = [
 
 const ReviewDetailScreen = () => {
   const router = useRouter();
-  const { id, type } = useLocalSearchParams();
+  const { id, type, from } = useLocalSearchParams();
   const [selectedImage, setSelectedImage] = useState(null);
   const [routeData, setRouteData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const { reviews, allRoutes } = useRoutes();
+
+  const handleBack = () => {
+    if (from) {
+      router.push(from);
+    } else {
+      router.push('/review');
+    }
+  };
 
   useEffect(() => {
     if (!id) { setIsLoading(false); return; }
@@ -134,7 +142,7 @@ const ReviewDetailScreen = () => {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.push('/review')} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
         </View>
@@ -149,7 +157,7 @@ const ReviewDetailScreen = () => {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.push('/review')} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
         </View>
@@ -192,7 +200,7 @@ const ReviewDetailScreen = () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/review')} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
       </View>

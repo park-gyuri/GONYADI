@@ -67,13 +67,52 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
     const response = await fetch(url, { ...finalOptions, signal: controller.signal });
     clearTimeout(timeoutId);
 
-    // 서버에서 에러(400, 500 등)를 뱉었을 때 화면단으로 에러 넘기기
+    // 1. 서버에서 에러(400, 401, 500 등)를 뱉었을 때
     if (!response.ok) {
+      // 🌟 [토큰 만료 시 자동 갱신 로직 추가] 🌟
+      if (response.status === 401 && endpoint !== '/api/v1/auth/login' && endpoint !== '/api/v1/auth/refresh') {
+        const refreshToken = await AsyncStorage.getItem('refresh_token');
+        if (refreshToken) {
+          try {
+            console.log("[apiClient] Access Token 만료 감지, Refresh Token으로 갱신 시도...");
+            const refreshUrl = `${BASE_URL}/api/v1/auth/refresh?refresh_token=${refreshToken}`;
+            const refreshResp = await fetch(refreshUrl, { method: 'POST' });
+            
+            if (refreshResp.ok) {
+              const refreshData = await refreshResp.json();
+              // 새 토큰 저장
+              await AsyncStorage.setItem('access_token', refreshData.access_token);
+              
+              // 갱신된 토큰으로 원래 하려던 요청(재시도)
+              console.log("[apiClient] 토큰 갱신 성공! 원래 요청 재시도...");
+              finalOptions.headers['Authorization'] = `Bearer ${refreshData.access_token}`;
+              
+              const retryController = new AbortController();
+              const retryTimeoutId = setTimeout(() => retryController.abort(), timeout);
+              
+              const retryResp = await fetch(url, { ...finalOptions, signal: retryController.signal });
+              clearTimeout(retryTimeoutId);
+              
+              if (retryResp.ok) {
+                return await retryResp.json();
+              }
+            } else {
+              // 리프레시 토큰도 만료되었거나 올바르지 않은 경우 -> 자동 로그아웃 처리
+              console.log("[apiClient] Refresh Token도 만료됨. 로그아웃 처리 필요.");
+              await AsyncStorage.removeItem('access_token');
+              await AsyncStorage.removeItem('refresh_token');
+            }
+          } catch (refreshErr) {
+            console.error("[apiClient] 토큰 갱신 중 에러:", refreshErr);
+          }
+        }
+      }
+
+      // 위에서 재시도를 안 했거나 실패했다면 원래대로 에러 처리
       let errorMessage = `서버 응답 오류 (상태 코드: ${response.status})`;
       try {
-        // 백엔드에서 JSON으로 에러 원인을 보내줬다면 그걸 읽어옵니다.
         const errorData = await response.json();
-        console.error("백엔드 상세 에러:", JSON.stringify(errorData, null, 2));
+        console.error(`[apiClient] ${endpoint} 상세 에러:`, JSON.stringify(errorData, null, 2));
 
         if (errorData.detail && Array.isArray(errorData.detail)) {
           errorMessage = errorData.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
