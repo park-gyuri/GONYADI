@@ -119,7 +119,7 @@ def build_hybrid_prompt(req: RecommendRequest) -> str:
 
 
 # ── [RAG] Step 3: LLM Curation 전용 프롬프트 빌더 ─────────────────────────────
-def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate]) -> str:
+def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate], pinned_names: set[str] | None = None) -> str:
     """
     DB에서 검증된 후보 장소 리스트(PlaceCandidate)를 기반으로
     Gemini가 '후보 리스트 안에서만' 장소를 선택하도록 강제하는 프롬프트를 생성한다.
@@ -173,6 +173,20 @@ def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate]) ->
             "3. 요구사항에 따라 일부 장소를 삭제하거나 새로운 장소로 교체/추가하되, **수정 대상이 아닌 기존 장소들은 출력 JSON 배열에 그대로(이름과 내용 동일하게) 포함**시켜야 합니다.\n"
             "4. 전체 장소의 개수나 일정이 적절히 유지되도록 하세요.)\n"
         )
+
+    # 필수 포함 장소 (사용자 상세 요청에서 언급된 장소 — Spatial Filter 후에도 보존됨)
+    pinned_section = ""
+    if pinned_names:
+        pinned_candidates = [p for p in candidates if p.name in pinned_names]
+        if pinned_candidates:
+            pinned_lines = "\n".join(
+                f"  - place_pk {p.place_pk}: {p.name}"
+                for p in pinned_candidates
+            )
+            pinned_section = (
+                "\n[필수 포함 장소 — 반드시 아래 장소를 최종 일정에 포함하십시오]\n"
+                f"{pinned_lines}\n"
+            )
 
     # 후보 리스트 문자열 (place_pk|name|거리km|카테고리|[태그])
     condition_values = [c.value for c in req.conditions]
@@ -241,8 +255,7 @@ def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate]) ->
 4. place_pk, day, order, reason, duration 필드만 반환하십시오.
 5. day는 여행 일차(1부터 {req.days}일차), order는 해당 일차 내 방문 순서(1부터 시작)입니다.
 6. 전체 {req.days}일 일정에 맞게 하루 6~7개 장소를 선택하십시오.
-7. 사용자가 [상세 요청]에서 언급한 장소명은 비공식·구어체 명칭일 수 있습니다 (예: '남산타워' → 'N서울타워', '롯데타워' → '롯데월드타워'). [검증된 장소 후보] 리스트에서 의미상 동일하거나 가장 가까운 장소를 찾아 해당 place_pk를 선택하십시오.{condition_priority_rule}{festival_date_rule}
-
+7. 사용자가 [상세 요청]에서 언급한 장소명은 비공식·구어체 명칭일 수 있습니다 (예: '남산타워' → 'N서울타워', '롯데타워' → '롯데월드타워'). [검증된 장소 후보] 리스트에서 의미상 동일하거나 가장 가까운 장소를 찾아 해당 place_pk를 선택하십시오.{condition_priority_rule}{festival_date_rule}{pinned_section}
 [검증된 장소 후보] (형식: place_pk|장소명|중심거리|카테고리)
 {candidate_lines}
 

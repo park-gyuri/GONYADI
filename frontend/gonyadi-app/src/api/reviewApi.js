@@ -33,6 +33,18 @@ export const deleteReview = async (reviewId) => {
   return response;
 };
 
+export const fetchTopLikedReviews = async () => {
+  return await apiClient('/api/v1/reviews/top-liked', { method: 'GET' });
+};
+
+export const likeReview = async (reviewId) => {
+  return await apiClient(`/api/v1/reviews/${reviewId}/like`, { method: 'POST' });
+};
+
+export const unlikeReview = async (reviewId) => {
+  return await apiClient(`/api/v1/reviews/${reviewId}/like`, { method: 'DELETE' });
+};
+
 export const fetchMyLikedReviews = async () => {
   return await apiClient('/api/v1/reviews/my-likes', { method: 'GET' });
 };

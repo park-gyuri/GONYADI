@@ -252,6 +252,7 @@ async def retrieve_and_filter_candidates(
         filtered       : Spatial Filter 통과 후보 (최대 20개) — 1차 Gemini 큐레이션용
         pre_filtered   : 랜덤 서브샘플 후보 (최대 30개) — 2차 Gemini 검토·교체용
         used_radius_km : 실제 사용된 검색 반경
+        pinned_names   : 사용자 상세 요청에서 언급된 장소 이름 집합
 
     """
     transport_names = [t.value for t in req.transports]
@@ -270,6 +271,9 @@ async def retrieve_and_filter_candidates(
     categories = list(dict.fromkeys(
         THEME_TO_CATEGORY[t] for t in theme_names if t in THEME_TO_CATEGORY
     ))
+    # 식사 장소는 테마 선택과 무관하게 항상 후보에 포함 (아침/점심/저녁 구조 보장)
+    if "맛집" not in categories:
+        categories.append("맛집")
     candidates = place_crud.retrieve_candidates_by_location(
         lat=req.center_lat,
         lng=req.center_lng,
@@ -278,10 +282,12 @@ async def retrieve_and_filter_candidates(
         session=session,
     )
 
-    # ── Step 1.5: 수정 모드 — user_message에 언급된 장소를 Text Search로 후보에 추가 ──
-    # 사용자가 "남산타워 추가해줘"처럼 구어체·비공식 장소명을 언급할 경우,
-    # Google Places Text Search가 공식 명칭으로 매핑해 DB에 추가한다.
-    if req.original_places and req.user_message.strip():
+    # ── Step 1.5: user_message에 언급된 장소를 Text Search로 후보에 추가 ──
+    # 초기 요청·수정 모드 모두 동작: "남산타워 가고싶어"처럼 구어체·비공식 장소명을
+    # Google Places Text Search로 공식 명칭에 매핑해 DB에 추가한다.
+    # 핀된 장소는 이후 서브샘플링·Spatial Filter에서 절대 제거되지 않는다.
+    pinned_names: set[str] = set()
+    if req.user_message.strip():
         text_query = f"{req.region} {req.user_message}"
         mention_results = await _fetch_google_places_text_search(
             query=text_query,
@@ -290,7 +296,10 @@ async def retrieve_and_filter_candidates(
             max_count=5,
         )
         if mention_results:
-            place_crud.bulk_upsert_places(mention_results, session)
+            saved = place_crud.bulk_upsert_places(mention_results, session)
+            # Google Places API 응답 이름이 아닌 DB에 실제 저장된 이름으로 핀 구성
+            pinned_names = {p.name for p in saved}
+            print(f"[RAG] 핀된 장소 (DB 저장명): {list(pinned_names)}")
             # 넓은 반경으로 재조회 — Text Search 결과가 원래 반경 밖일 수도 있음
             candidates = place_crud.retrieve_candidates_by_location(
                 lat=req.center_lat,
@@ -316,14 +325,13 @@ async def retrieve_and_filter_candidates(
         radius_m = radius_km * 1000
 
         # Google Places 타입 결정
-        # restaurant는 맛집 테마를 직접 선택한 경우에만 포함 (항상 추가하면 식당 과잉)
+        # restaurant는 아침/점심/저녁 구조를 위해 항상 포함
         google_types_set = {
             THEME_TO_GOOGLE_TYPE[t]
             for t in theme_names
             if t in THEME_TO_GOOGLE_TYPE
         }
-        if "맛집" in theme_names:
-            google_types_set.add("restaurant")
+        google_types_set.add("restaurant")
         google_types = list(google_types_set) or ["tourist_attraction", "restaurant"]
 
         # TourAPI 조건별 선택 (반려동물 > 무장애 > 일반)
@@ -398,12 +406,36 @@ async def retrieve_and_filter_candidates(
                 session=session,
             )
 
+    # ── Step 4 이후 핀된 장소 복원 ──────────────────────────────────────────────
+    # Step 4가 radius_km으로 재조회할 경우 Step 1.5에서 찾은 장소가 사라질 수 있음
+    if pinned_names:
+        existing_names = {c.name for c in candidates}
+        missing = pinned_names - existing_names
+        if missing:
+            # 더 넓은 반경으로 재조회해 핀된 장소를 복구
+            wide_candidates = place_crud.retrieve_candidates_by_location(
+                lat=req.center_lat,
+                lng=req.center_lng,
+                radius_km=max(radius_km, 30.0),
+                categories=None,
+                session=session,
+            )
+            recovered = [c for c in wide_candidates if c.name in missing]
+            candidates.extend(recovered)
+            print(f"[RAG] 핀된 장소 복원: {[c.name for c in recovered]}")
+
     # ── Step 2: Spatial Filtering ─────────────────────────────────────────────
-    # 오버샘플(60개) 중 30개를 랜덤 서브샘플 → 매 요청마다 후보 풀에 다양성 부여
+    # 핀된 장소를 먼저 분리해 서브샘플링에서 제외 → 항상 보존
+    pinned_candidates = [c for c in candidates if c.name in pinned_names]
+    other_candidates  = [c for c in candidates if c.name not in pinned_names]
+
     _SUBSAMPLE_SIZE = 30
-    if len(candidates) > _SUBSAMPLE_SIZE:
-        candidates = random.sample(candidates, _SUBSAMPLE_SIZE)
-        print(f"[RAG] 랜덤 서브샘플: {_SUBSAMPLE_SIZE}개 선택")
+    sample_size = max(0, _SUBSAMPLE_SIZE - len(pinned_candidates))
+    if len(other_candidates) > sample_size:
+        other_candidates = random.sample(other_candidates, sample_size)
+        print(f"[RAG] 랜덤 서브샘플: {sample_size}개 선택 (핀 {len(pinned_candidates)}개 보존)")
+
+    candidates = pinned_candidates + other_candidates
 
     # 서브샘플 전체를 보존 — 2차 Gemini 검토 시 교체 후보로 사용
     pre_filtered = list(candidates)
@@ -414,4 +446,32 @@ async def retrieve_and_filter_candidates(
         max_result=20,
     )
 
-    return filtered, pre_filtered, radius_km
+    # Spatial Filter 이후에도 핀된 장소 보존
+    if pinned_names:
+        filtered_names = {c.name for c in filtered}
+        for p in pinned_candidates:
+            if p.name not in filtered_names:
+                filtered.append(p)
+                print(f"[RAG] 핀된 장소 Spatial Filter 후 복원: {p.name}")
+
+    # ── 식사 장소 최소 쿼터 보장 ──────────────────────────────────────────────
+    # 하루 구조(아침/점심/저녁)를 위해 일수 × 3개 이상의 식사 장소가 필요
+    _MEAL_CATEGORIES = {"맛집", "식당", "음식점", "레스토랑"}
+    _MEAL_PER_DAY = 3
+    needed_meals = (req.days or 1) * _MEAL_PER_DAY
+    current_meal_count = sum(1 for p in filtered if p.category in _MEAL_CATEGORIES)
+
+    if current_meal_count < needed_meals:
+        filtered_pks = {p.place_pk for p in filtered}
+        extra_meals = [
+            p for p in pre_filtered
+            if p.category in _MEAL_CATEGORIES and p.place_pk not in filtered_pks
+        ]
+        shortage = needed_meals - current_meal_count
+        filtered.extend(extra_meals[:shortage])
+        print(
+            f"[RAG] 식사 장소 부족 ({current_meal_count}개 < {needed_meals}개) "
+            f"→ pre_filtered에서 {min(shortage, len(extra_meals))}개 보충"
+        )
+
+    return filtered, pre_filtered, radius_km, pinned_names

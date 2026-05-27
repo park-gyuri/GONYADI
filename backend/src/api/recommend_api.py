@@ -72,6 +72,137 @@ def _build_route_segments(places_from_ai, transport_names) -> list[RouteSegment]
     return route_segments
 
 
+_MEAL_CATS  = {"맛집", "식당", "음식점", "레스토랑"}
+_CAFE_CATS  = {"카페"}
+_MEAL_PER_DAY = 3
+_MAX_PER_DAY  = 7
+
+def _enforce_meal_structure(
+    schedule: list[DaySchedule],
+    review_candidates: list["PlaceCandidate"],  # noqa: F821
+) -> list[DaySchedule]:
+    """
+    Gemini가 고치지 못한 식사 장소 부족을 프로그래매틱으로 보정한다.
+    review_candidates 풀에서 맛집을 꺼내 비식사·비카페 장소와 교체한다.
+    """
+    used_names = {p.name for d in schedule for p in d.places}
+    meal_pool = [
+        c for c in review_candidates
+        if c.category in _MEAL_CATS and c.name not in used_names
+    ]
+
+    for day_sched in schedule:
+        places = day_sched.places
+        meal_count = sum(1 for p in places if p.category in _MEAL_CATS)
+        shortage = _MEAL_PER_DAY - meal_count
+        if shortage <= 0 or not meal_pool:
+            continue
+
+        # 삽입 위치: 저녁(마지막) → 점심(중간) → 아침(처음) 순으로 채움
+        insert_positions = {
+            1: [len(places) - 1],            # 저녁: 마지막 자리
+            2: [len(places) // 2, len(places) - 1],  # 점심 + 저녁
+        }.get(meal_count, [0, len(places) // 2, len(places) - 1])
+
+        for pos in insert_positions[:shortage]:
+            if not meal_pool:
+                break
+            cand = meal_pool.pop(0)
+            meal_place = PlaceResult(
+                name=cand.name, lat=cand.lat, lng=cand.lng,
+                reason="일정 균형을 위한 식사 장소 보충",
+                duration=60, category=cand.category,
+            )
+            # pos 자리의 비식사·비카페 장소를 교체, 없으면 append
+            replaced = False
+            for i in range(min(pos, len(places) - 1), -1, -1):
+                if places[i].category not in (_MEAL_CATS | _CAFE_CATS):
+                    print(f"[식사 보충] Day {day_sched.day}: '{places[i].name}'({places[i].category}) → '{cand.name}'(맛집)")
+                    places[i] = meal_place
+                    replaced = True
+                    break
+            if not replaced and len(places) < _MAX_PER_DAY:
+                places.append(meal_place)
+                print(f"[식사 보충] Day {day_sched.day}: '{cand.name}' 추가")
+            used_names.add(cand.name)
+
+        day_sched.places = places
+    return schedule
+
+
+def _check_schedule_rules(schedule: list[DaySchedule], conditions: list[str]) -> None:
+    """최종 일정의 프롬프트 규칙 준수 여부를 로그로 출력한다."""
+    print("\n" + "="*60)
+    print("[규칙 검사] 최종 일정 프롬프트 규칙 준수 여부")
+    print("="*60)
+
+    total_violations = 0
+
+    for day_sched in schedule:
+        day = day_sched.day
+        places = day_sched.places
+        cats = [p.category for p in places]
+        violations = []
+
+        # 일정 구조 출력
+        structure = " → ".join(f"[{p.category}]{p.name}" for p in places)
+        print(f"\nDay {day} ({len(places)}개): {structure}")
+
+        # 규칙 1: 하루 6~7개 장소
+        if not (6 <= len(places) <= 7):
+            violations.append(f"장소 수 {len(places)}개 (규칙: 6~7개)")
+
+        # 규칙 2: 식사 장소 3개 (아침/점심/저녁)
+        meal_count = sum(1 for c in cats if c in _MEAL_CATS)
+        if meal_count < 3:
+            violations.append(f"식사 장소 {meal_count}개 (규칙: 3개 — 아침/점심/저녁 미충족)")
+        elif meal_count > 3:
+            violations.append(f"식사 장소 {meal_count}개 (규칙: 최대 3개 초과)")
+
+        # 규칙 3: 카페 최대 1개
+        cafe_count = sum(1 for c in cats if c in _CAFE_CATS)
+        if cafe_count > 1:
+            violations.append(f"카페 {cafe_count}개 (규칙: 최대 1개)")
+
+        # 규칙 4: 연속 동일 카테고리 (식사·카페)
+        for i in range(len(cats) - 1):
+            if cats[i] == cats[i + 1] and cats[i] in (_MEAL_CATS | _CAFE_CATS):
+                violations.append(
+                    f"연속 동일 카테고리: [{cats[i]}] order {i+1}→{i+2} "
+                    f"({places[i].name} → {places[i+1].name})"
+                )
+
+        # 규칙 5: 하루 구조 — 첫 번째 장소가 식사인지
+        if places and cats[0] not in _MEAL_CATS:
+            violations.append(f"첫 장소가 식사 아님: [{cats[0]}]{places[0].name} (규칙: 아침 식사 먼저)")
+
+        # 규칙 6: 조건 — 휠체어 (접근성 미확인 장소가 있으면 경고)
+        if "휠체어" in conditions:
+            unconfirmed = [p.name for p in places if getattr(p, "accessibility_unconfirmed", False)]
+            if unconfirmed:
+                violations.append(f"휠체어 조건 — 접근성 미확인 장소: {unconfirmed}")
+
+        # 규칙 7: 조건 — 반려동물 (펫 미확인 장소가 있으면 경고)
+        if "반려동물 동반" in conditions:
+            unconfirmed = [p.name for p in places if getattr(p, "pet_unconfirmed", False)]
+            if unconfirmed:
+                violations.append(f"반려동물 조건 — 입장 미확인 장소: {unconfirmed}")
+
+        if violations:
+            for v in violations:
+                print(f"  ❌ {v}")
+            total_violations += len(violations)
+        else:
+            print(f"  ✅ 모든 규칙 준수")
+
+    print("\n" + "-"*60)
+    if total_violations == 0:
+        print(f"[규칙 검사] 전체 결과: ✅ 위반 없음")
+    else:
+        print(f"[규칙 검사] 전체 결과: ❌ 총 {total_violations}건 위반")
+    print("="*60 + "\n")
+
+
 def _flat_to_schedule(places: list[PlaceResult], total_days: int) -> list[DaySchedule]:
     if not places:
         return []
@@ -119,7 +250,7 @@ async def handle_recommendation(
 
     # ── RAG 파이프라인 ────────────────────────────────────────────────────────
     print(f"[추천] RAG 파이프라인 실행 (center={center_lat},{center_lng})")
-    candidates, review_candidates, used_radius_km = await retrieve_and_filter_candidates(req, session)
+    candidates, review_candidates, used_radius_km, pinned_names = await retrieve_and_filter_candidates(req, session)
 
     if not candidates:
         raise HTTPException(
@@ -137,7 +268,7 @@ async def handle_recommendation(
 
     # ── Gemini Curation (1차: Spatial Filter 통과 후보 20개에서 장소 선택) ──────
     # 동기 Gemini 함수를 스레드풀에서 실행해 async 이벤트 루프 블록 방지
-    rag_prompt = build_rag_prompt(req, candidates)
+    rag_prompt = build_rag_prompt(req, candidates, pinned_names=pinned_names)
     condition_values = [c.value for c in req.conditions]
     loop = asyncio.get_event_loop()
     schedule = await loop.run_in_executor(
@@ -182,6 +313,10 @@ async def handle_recommendation(
                 place.accessibility_unconfirmed = True
             if is_pet_condition and (cand is None or cand.is_pet_friendly is not True):
                 place.pet_unconfirmed = True
+
+    # Gemini가 미처 고치지 못한 식사 부족을 프로그래매틱으로 최종 보정
+    schedule = _enforce_meal_structure(schedule, review_candidates)
+    _check_schedule_rules(schedule, condition_values)
 
     places_from_ai = [p for d in schedule for p in d.places]
     route_segments = _schedule_to_route_segments(schedule, transport_names)
