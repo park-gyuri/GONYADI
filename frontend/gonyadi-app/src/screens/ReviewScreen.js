@@ -34,14 +34,56 @@ const ReviewScreen = () => {
     load();
   }, []));
 
+  // 초성 추출 함수
+  const getChosung = (str) => {
+    if (!str) return "";
+    const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+    let result = "";
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i) - 44032;
+      if (code > -1 && code < 11172) {
+        result += cho[Math.floor(code / 588)];
+      } else {
+        result += str.charAt(i);
+      }
+    }
+    return result;
+  };
+
+  const q = searchQuery.toLowerCase().replace(/\s+/g, '');
+  const qChosung = getChosung(q);
+
+  // 연관 검색어 (region, places 기반)
+  const allKeywords = Array.from(new Set(
+    reviews.flatMap(r => [r.region, ...(r.places || [])].filter(Boolean))
+  ));
+
+  const suggestedKeywords = searchQuery.trim() === ''
+    ? []
+    : allKeywords.filter(k => {
+        const kLower = k.toLowerCase().replace(/\s+/g, '');
+        return kLower.includes(q) || getChosung(kLower).includes(qChosung);
+      }).slice(0, 5);
+
   // 검색어 기반 필터링
   const filteredReviews = reviews.filter(r => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    
+    const titleStr = (r.title || "").toLowerCase().replace(/\s+/g, '');
+    const regionStr = (r.region || "").toLowerCase().replace(/\s+/g, '');
+    const previewStr = (r.preview_comment || "").toLowerCase().replace(/\s+/g, '');
+    const placeStrs = (r.places || []).map(p => p.toLowerCase().replace(/\s+/g, ''));
+    
+    const titleCho = getChosung(titleStr);
+    const regionCho = getChosung(regionStr);
+    const previewCho = getChosung(previewStr);
+    const placeChos = placeStrs.map(getChosung);
+    
     return (
-      r.title?.toLowerCase().includes(q) ||
-      r.preview_comment?.toLowerCase().includes(q) ||
-      r.region?.toLowerCase().includes(q)
+      titleStr.includes(q) || titleCho.includes(qChosung) ||
+      regionStr.includes(q) || regionCho.includes(qChosung) ||
+      previewStr.includes(q) || previewCho.includes(qChosung) ||
+      placeStrs.some((p, i) => p.includes(q) || placeChos[i].includes(qChosung))
     );
   });
 
@@ -57,14 +99,6 @@ const ReviewScreen = () => {
       Alert.alert('공유 실패', e.message);
     }
   };
-
-  // 연관 검색어 (title, region 기반)
-  const allKeywords = Array.from(new Set(
-    reviews.flatMap(r => [r.title, r.region].filter(Boolean))
-  ));
-  const suggestedKeywords = searchQuery.trim() === ''
-    ? []
-    : allKeywords.filter(k => k.includes(searchQuery)).slice(0, 5);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

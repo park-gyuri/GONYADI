@@ -29,6 +29,7 @@ class ReviewListItem(BaseModel):
     author_profile_image: Optional[str] = None
     created_at: datetime
     like_count: int = 0
+    places: List[str] = []
 
 class TopLikedReview(BaseModel):
     review_pk: int
