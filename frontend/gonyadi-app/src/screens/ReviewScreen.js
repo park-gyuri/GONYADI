@@ -34,24 +34,44 @@ const ReviewScreen = () => {
     load();
   }, []));
 
-  // 초성 추출 함수
-  const getChosung = (str) => {
-    if (!str) return "";
-    const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-    let result = "";
-    for (let i = 0; i < str.length; i++) {
-      const code = str.charCodeAt(i) - 44032;
-      if (code > -1 && code < 11172) {
-        result += cho[Math.floor(code / 588)];
-      } else {
-        result += str.charAt(i);
+  // 한글 초성 및 부분 매칭 정규식 생성기
+  const createFuzzyRegex = (query) => {
+    if (!query) return new RegExp('');
+    const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cho = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    let pattern = '';
+    
+    for (let i = 0; i < query.length; i++) {
+      const char = query[i];
+      const code = char.charCodeAt(0);
+      
+      // 완성형 한글인 경우
+      if (code >= 44032 && code <= 55203) {
+        // 종성이 없는 경우 (받침 없음) -> 가~깋 처럼 범위로 검색
+        if ((code - 44032) % 28 === 0) {
+          const endChar = String.fromCharCode(code + 27);
+          pattern += `[${char}-${endChar}]`;
+        } else {
+          pattern += char;
+        }
+      } 
+      // 자음(초성)인 경우
+      else {
+        const choIndex = cho.indexOf(char);
+        if (choIndex !== -1) {
+          const start = 44032 + (choIndex * 588);
+          const end = start + 587;
+          pattern += `[${char}${String.fromCharCode(start)}-${String.fromCharCode(end)}]`;
+        } else {
+          pattern += escapeRegExp(char);
+        }
       }
     }
-    return result;
+    return new RegExp(pattern, 'i');
   };
 
   const q = searchQuery.toLowerCase().replace(/\s+/g, '');
-  const qChosung = getChosung(q);
+  const fuzzyRegex = createFuzzyRegex(q);
 
   // 연관 검색어 (region, places 기반)
   const allKeywords = Array.from(new Set(
@@ -62,16 +82,22 @@ const ReviewScreen = () => {
     ? []
     : allKeywords.filter(k => {
         const kLower = k.toLowerCase().replace(/\s+/g, '');
-        return kLower.includes(q) || getChosung(kLower).includes(qChosung);
+        return fuzzyRegex.test(kLower);
       }).sort((a, b) => {
         const aLower = a.toLowerCase().replace(/\s+/g, '');
         const bLower = b.toLowerCase().replace(/\s+/g, '');
-        const aCho = getChosung(aLower);
-        const bCho = getChosung(bLower);
+
+        // 정확히 일치하는 단어를 초성 매칭보다 우선
+        const aExact = aLower.includes(q);
+        const bExact = bLower.includes(q);
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
 
         // 매칭되는 위치 찾기 (앞쪽일수록 우선순위 높음)
-        const aIndex = aLower.includes(q) ? aLower.indexOf(q) : aCho.indexOf(qChosung);
-        const bIndex = bLower.includes(q) ? bLower.indexOf(q) : bCho.indexOf(qChosung);
+        const aMatch = aLower.match(fuzzyRegex);
+        const bMatch = bLower.match(fuzzyRegex);
+        const aIndex = aMatch ? aMatch.index : 999;
+        const bIndex = bMatch ? bMatch.index : 999;
         
         if (aIndex !== bIndex) return aIndex - bIndex; // 0(시작 단어)일수록 상위 노출
         return a.length - b.length; // 매칭 위치가 같다면 글자 수가 짧은 것을 우선
@@ -86,16 +112,11 @@ const ReviewScreen = () => {
     const previewStr = (r.preview_comment || "").toLowerCase().replace(/\s+/g, '');
     const placeStrs = (r.places || []).map(p => p.toLowerCase().replace(/\s+/g, ''));
     
-    const titleCho = getChosung(titleStr);
-    const regionCho = getChosung(regionStr);
-    const previewCho = getChosung(previewStr);
-    const placeChos = placeStrs.map(getChosung);
-    
     return (
-      titleStr.includes(q) || titleCho.includes(qChosung) ||
-      regionStr.includes(q) || regionCho.includes(qChosung) ||
-      previewStr.includes(q) || previewCho.includes(qChosung) ||
-      placeStrs.some((p, i) => p.includes(q) || placeChos[i].includes(qChosung))
+      fuzzyRegex.test(titleStr) ||
+      fuzzyRegex.test(regionStr) ||
+      fuzzyRegex.test(previewStr) ||
+      placeStrs.some(p => fuzzyRegex.test(p))
     );
   });
 
