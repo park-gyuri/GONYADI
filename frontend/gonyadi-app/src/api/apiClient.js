@@ -35,6 +35,18 @@ function getBaseUrl() {
 export const BASE_URL = getBaseUrl();
 console.log(`[apiClient] 백엔드 서버 주소: ${BASE_URL}`);
 
+export const getFullImageUrl = (url) => {
+  if (!url) return null;
+  if (typeof url !== 'string') return url;
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('file://')) return url;
+  
+  if (url.startsWith('/')) {
+    return `${BASE_URL}${url}`;
+  }
+  return `${BASE_URL}/${url}`;
+};
+
 // 2. 공통 호출 함수 만들기
 // timeout: 기본 10초. 경로 추천처럼 오래 걸리는 요청은 호출 시 늘려서 사용
 export const apiClient = async (endpoint, options = {}, timeout = 10000) => {

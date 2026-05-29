@@ -8,7 +8,7 @@ import MarkerIcon from '../components/icons/markerIcon';
 import StarIcon from '../components/icons/starIcon';
 import ReviewSaveModal from '../components/ReviewSaveModal';
 import { useRoutes } from '../context/RouteContext';
-import { createReview, updateReview as updateReviewApi } from '../api/reviewApi';
+import { createReview, updateReview as updateReviewApi, uploadReviewImages } from '../api/reviewApi';
 
 const ReviewWriteScreen = () => {
   const router = useRouter();
@@ -92,22 +92,55 @@ const ReviewWriteScreen = () => {
     }
 
     try {
+      // 1. 새 이미지들(file://)을 수집하여 업로드
+      const newImagesToUpload = [];
+      const placeIdIndices = []; // 나중에 URL 치환용 맵핑
+
+      Object.entries(photos).forEach(([placeId, uriList]) => {
+        uriList.forEach((uri, index) => {
+          if (uri.startsWith('file://')) {
+            newImagesToUpload.push({ uri, name: uri.split('/').pop(), type: 'image/jpeg' });
+            placeIdIndices.push({ placeId, index });
+          }
+        });
+      });
+
+      // 기존 photos 복사본을 만들어 서버 URL로 교체 준비
+      let updatedPhotos = JSON.parse(JSON.stringify(photos));
+
+      if (newImagesToUpload.length > 0) {
+        const formData = new FormData();
+        newImagesToUpload.forEach(img => {
+          formData.append('files', img);
+        });
+
+        // 서버로 다중 파일 업로드 API 호출
+        const uploadRes = await uploadReviewImages(formData);
+        const uploadedUrls = uploadRes.uploaded_urls || [];
+
+        // 업로드 성공한 서버 상대 경로(/static/review_images/...)로 교체
+        uploadedUrls.forEach((serverUrl, i) => {
+          const mapping = placeIdIndices[i];
+          updatedPhotos[mapping.placeId][mapping.index] = serverUrl;
+        });
+      }
+
       if (isEditMode && reviewId) {
         // 수정 모드
         const response = await updateReviewApi(reviewId, {
           title: mainTitle,
           ratings,
           comments,
-          photos,
+          photos: updatedPhotos,
           thumbnail_place_id: thumbnailPlaceId,
         });
 
         updateReviewInContext(Number(reviewId), {
           title: mainTitle,
           content: Object.values(comments).find(c => c) || '내용 없음',
-          thumbnail: thumbnailPlaceId && photos[thumbnailPlaceId]?.[0]
-            ? photos[thumbnailPlaceId][0]
-            : Object.values(photos).flat()[0] || null,
+          thumbnail: thumbnailPlaceId && updatedPhotos[thumbnailPlaceId]?.[0]
+            ? updatedPhotos[thumbnailPlaceId][0]
+            : Object.values(updatedPhotos).flat()[0] || null,
         });
 
         Alert.alert('완료', '후기가 수정되었습니다.', [
@@ -125,7 +158,7 @@ const ReviewWriteScreen = () => {
           title: mainTitle,
           ratings,
           comments,
-          photos,
+          photos: updatedPhotos,
           thumbnail_place_id: thumbnailPlaceId,
         });
 
@@ -134,9 +167,9 @@ const ReviewWriteScreen = () => {
           routeId: response.itinerary_id || id,
           title: mainTitle,
           content: Object.values(comments)[0] || '내용 없음',
-          thumbnail: thumbnailPlaceId && photos[thumbnailPlaceId]?.[0]
-            ? photos[thumbnailPlaceId][0]
-            : Object.values(photos)[0]?.[0] || null,
+          thumbnail: thumbnailPlaceId && updatedPhotos[thumbnailPlaceId]?.[0]
+            ? updatedPhotos[thumbnailPlaceId][0]
+            : Object.values(updatedPhotos)[0]?.[0] || null,
         });
 
         setSaveModalVisible(false);
@@ -151,7 +184,7 @@ const ReviewWriteScreen = () => {
           routeId: id,
           title: mainTitle,
           content: Object.values(comments)[0] || '내용 없음',
-          thumbnail: Object.values(photos)[0]?.[0] || null,
+          thumbnail: Object.values(updatedPhotos)[0]?.[0] || null,
         });
         setSaveModalVisible(false);
         router.replace('/review');

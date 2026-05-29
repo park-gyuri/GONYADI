@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchTopLikedReviews } from '../api/reviewApi';
+import { getFullImageUrl } from '../api/apiClient';
 
 const MainScreen = () => {
   const router = useRouter();
@@ -66,7 +67,7 @@ const MainScreen = () => {
   };
 
   const getCardImage = (review) => {
-    if (review.thumbnail) return { uri: review.thumbnail };
+    if (review.thumbnail) return { uri: getFullImageUrl(review.thumbnail) };
     const seed = encodeURIComponent(review.region || review.title || 'korea');
     return { uri: `https://picsum.photos/seed/${seed}/300/200` };
   };

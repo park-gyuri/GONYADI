@@ -8,7 +8,7 @@ import PencilIcon from '../components/icons/pencilIcon';
 import HeartIcon from '../components/icons/heartIcon';
 import ShareIcon from '../components/icons/shareIcon';
 import { fetchReviews } from '../api/reviewApi';
-import { BASE_URL } from '../api/apiClient';
+import { BASE_URL, getFullImageUrl } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
 
 const ReviewScreen = () => {
@@ -189,7 +189,7 @@ const ReviewScreen = () => {
               <View style={styles.imageSection}>
                 {review.thumbnail ? (
                   <Image
-                    source={{ uri: review.thumbnail }}
+                    source={{ uri: getFullImageUrl(review.thumbnail) }}
                     style={styles.imagePlaceholder}
                     resizeMode="cover"
                   />
@@ -203,11 +203,7 @@ const ReviewScreen = () => {
                   {/* 프로필 이미지 서버 데이터 연동 */}
                   {review.author_profile_image ? (
                     <Image
-                      source={{
-                        uri: review.author_profile_image.startsWith('http')
-                          ? review.author_profile_image
-                          : `${BASE_URL}${review.author_profile_image}`,
-                      }}
+                      source={{ uri: getFullImageUrl(review.author_profile_image) }}
                       style={styles.userAvatar}
                     />
                   ) : (

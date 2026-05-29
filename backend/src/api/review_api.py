@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import List
+import os
+import shutil
+import uuid
 from sqlmodel import Session
 from src.core.database import get_session
 from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview, ReviewUpdate
@@ -6,6 +10,31 @@ from src.crud import review_crud
 from src.core.security import get_current_user
 
 router = APIRouter()
+
+@router.post("/reviews/upload-images")
+def upload_review_images(
+    files: List[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    여러 장의 리뷰 이미지를 서버에 업로드하고 서버 내 상대 경로 리스트를 반환합니다.
+    """
+    upload_dir = os.path.join("static", "review_images")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    saved_paths = []
+    for file in files:
+        extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+        unique_filename = f"review_{uuid.uuid4().hex}{extension}"
+        file_path = os.path.join(upload_dir, unique_filename)
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        relative_url = f"/static/review_images/{unique_filename}"
+        saved_paths.append(relative_url)
+        
+    return {"uploaded_urls": saved_paths}
 
 @router.post("/reviews", response_model=ReviewDetailResponse)
 def create_review(

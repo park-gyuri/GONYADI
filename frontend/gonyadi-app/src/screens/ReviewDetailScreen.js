@@ -8,6 +8,7 @@ import StarIcon from '../components/icons/starIcon';
 import ReviewupdateIcon from '../components/icons/reviewupdateIcon';
 import { useRoutes } from '../context/RouteContext';
 import { fetchReviewById, deleteReview as deleteReviewApi } from '../api/reviewApi';
+import { getFullImageUrl } from '../api/apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
@@ -362,7 +363,7 @@ const ReviewDetailScreen = () => {
                         {item.photos.map((imgUrl, imgIndex) => (
                           <TouchableOpacity key={imgIndex} activeOpacity={0.8} onPress={() => openImageViewer(item.photos, imgIndex)}>
                             <Image
-                              source={typeof imgUrl === 'string' ? { uri: imgUrl } : imgUrl}
+                              source={typeof imgUrl === 'string' ? { uri: getFullImageUrl(imgUrl) } : imgUrl}
                               style={styles.thumbnailImage}
                             />
                           </TouchableOpacity>
@@ -406,7 +407,7 @@ const ReviewDetailScreen = () => {
                 renderItem={({ item }) => (
                   <View style={{ width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' }}>
                     <Image
-                      source={typeof item === 'string' ? { uri: item } : item}
+                      source={typeof item === 'string' ? { uri: getFullImageUrl(item) } : item}
                       style={styles.fullScreenImage}
                       resizeMode="contain"
                     />
