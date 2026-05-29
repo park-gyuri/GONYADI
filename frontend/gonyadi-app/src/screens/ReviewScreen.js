@@ -63,6 +63,18 @@ const ReviewScreen = () => {
     : allKeywords.filter(k => {
         const kLower = k.toLowerCase().replace(/\s+/g, '');
         return kLower.includes(q) || getChosung(kLower).includes(qChosung);
+      }).sort((a, b) => {
+        const aLower = a.toLowerCase().replace(/\s+/g, '');
+        const bLower = b.toLowerCase().replace(/\s+/g, '');
+        const aCho = getChosung(aLower);
+        const bCho = getChosung(bLower);
+
+        // 매칭되는 위치 찾기 (앞쪽일수록 우선순위 높음)
+        const aIndex = aLower.includes(q) ? aLower.indexOf(q) : aCho.indexOf(qChosung);
+        const bIndex = bLower.includes(q) ? bLower.indexOf(q) : bCho.indexOf(qChosung);
+        
+        if (aIndex !== bIndex) return aIndex - bIndex; // 0(시작 단어)일수록 상위 노출
+        return a.length - b.length; // 매칭 위치가 같다면 글자 수가 짧은 것을 우선
       }).slice(0, 5);
 
   // 검색어 기반 필터링
