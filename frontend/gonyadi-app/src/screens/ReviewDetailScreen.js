@@ -288,25 +288,31 @@ const ReviewDetailScreen = () => {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        {/* 수정/삭제 버튼 직접 노출 */}
-        {rawReviewData && (
+        {/* 수정/삭제 버튼 직접 노출 (마이페이지의 내가 작성한 후기 내역에서만 보임) */}
+        {rawReviewData && from === '/my-review-history' && (
           <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={{ padding: 8 }}>
             <ReviewupdateIcon width={24} height={24} color="#111" />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* 드롭다운 메뉴 */}
+      {/* 드롭다운 메뉴 (바깥 영역 클릭 시 닫힘) */}
       {showMenu && (
-        <View style={styles.dropdownMenu}>
-          <TouchableOpacity style={styles.dropdownItem} onPress={handleEdit}>
-            <Text style={styles.dropdownText}>✏️  수정하기</Text>
-          </TouchableOpacity>
-          <View style={styles.dropdownDivider} />
-          <TouchableOpacity style={styles.dropdownItem} onPress={() => { setShowMenu(false); handleDelete(); }}>
-            <Text style={[styles.dropdownText, { color: '#E74C3C' }]}>🗑️  삭제하기</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 90 }} 
+          activeOpacity={1} 
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.dropdownMenu}>
+            <TouchableOpacity style={styles.dropdownItem} onPress={handleEdit}>
+              <Text style={styles.dropdownText}>✏️  수정하기</Text>
+            </TouchableOpacity>
+            <View style={styles.dropdownDivider} />
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => { setShowMenu(false); handleDelete(); }}>
+              <Text style={[styles.dropdownText, { color: '#E74C3C' }]}>🗑️  삭제하기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       )}
 
 
