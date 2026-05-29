@@ -4,7 +4,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { requestNewRoute } from '../api/routeApi';
+import { requestNewRoute, setRecommendationCache } from '../api/routeApi';
 import {
   mockRouteResultBusan,
   mockRouteResultDaegu,
@@ -204,13 +204,8 @@ const RecommendInputScreen = () => {
                 try {
                   const expandedData = await requestNewRoute({ ...formData, radius_km: nextRadius });
                   setIsLoading(false);
-                  router.push({
-                    pathname: '/route-result',
-                    params: {
-                      response: JSON.stringify(expandedData),
-                      originalRequest: JSON.stringify({ ...formData, radius_km: nextRadius }),
-                    }
-                  });
+                  setRecommendationCache(expandedData, { ...formData, radius_km: nextRadius });
+                  router.push('/route-result');
                 } catch (err) {
                   setIsLoading(false);
                   Alert.alert('에러', '경로 추천을 가져오는데 실패했습니다.');
@@ -219,13 +214,10 @@ const RecommendInputScreen = () => {
             },
             {
               text: '현재 결과로 보기',
-              onPress: () => router.push({
-                pathname: '/route-result',
-                params: {
-                  response: JSON.stringify(data),
-                  originalRequest: JSON.stringify(formData),
-                }
-              }),
+              onPress: () => {
+                setRecommendationCache(data, formData);
+                router.push('/route-result');
+              },
             },
           ],
           { cancelable: false }
@@ -233,13 +225,8 @@ const RecommendInputScreen = () => {
         return;
       }
 
-      router.push({
-        pathname: '/route-result',
-        params: {
-          response: JSON.stringify(data),
-          originalRequest: JSON.stringify(formData)
-        }
-      });
+      setRecommendationCache(data, formData);
+      router.push('/route-result');
     } catch (error) {
       setIsLoading(false);
       Alert.alert('에러', '경로 추천을 가져오는데 실패했습니다. 백엔드 서버 상태를 확인해주세요.');

@@ -124,8 +124,14 @@ if (-not (Test-Path $VenvActivate)) {
 
 # Show current IP (for debugging)
 $localIP = (Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -ne "127.0.0.1" -and $_.PrefixOrigin -ne "WellKnown" } |
-    Select-Object -First 1).IPAddress
+    Where-Object {
+        $_.InterfaceAlias -notlike "*WSL*" -and
+        $_.InterfaceAlias -notlike "*vEthernet*" -and
+        $_.InterfaceAlias -notlike "*VMware*" -and
+        $_.InterfaceAlias -notlike "*VirtualBox*" -and
+        $_.IPAddress -ne "127.0.0.1" -and
+        $_.IPAddress -notlike "169.254.*"
+    } | Select-Object -First 1).IPAddress
 
 if ($localIP) {
     Write-Ok "Current PC IP: $localIP"
