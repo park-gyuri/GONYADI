@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from sqlmodel import SQLModel, text
 from src.api import auth_api
@@ -20,6 +21,12 @@ async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
     # places 테이블 신규 컬럼 마이그레이션 (이미 존재하면 무시)
     with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_profile_image VARCHAR"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            
         for col, coltype in [("is_pet_friendly", "BOOLEAN"), ("is_accessible", "BOOLEAN")]:
             try:
                 conn.execute(text(f"ALTER TABLE places ADD COLUMN IF NOT EXISTS {col} {coltype}"))
@@ -40,6 +47,10 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+# 정적 파일 제공 디렉토리 생성 및 마운트
+os.makedirs("static/profile_images", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS 설정 — 프론트엔드(Expo 웹/모바일)에서 API 접근 허용
 app.add_middleware(

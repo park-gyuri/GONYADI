@@ -49,6 +49,20 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
                     thumbnail = photo_list[0]
                     break
 
+        # Extract places
+        places = []
+        if itinerary and itinerary.recommendation_data:
+            rec_data = itinerary.recommendation_data
+            if "schedule" in rec_data:
+                for day in rec_data["schedule"]:
+                    for p in day.get("places", []):
+                        if p.get("name"):
+                            places.append(p["name"])
+            elif "places" in rec_data:
+                for p in rec_data["places"]:
+                    if p.get("name"):
+                        places.append(p["name"])
+
         items.append(ReviewListItem(
             review_pk=review.review_pk,
             itinerary_id=review.itinerary_id,
@@ -58,8 +72,10 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
             thumbnail=thumbnail,
             region=itinerary.region if itinerary else None,
             author=user.user_nickname if user else "익명 사용자",
+            author_profile_image=user.user_profile_image if user else None,
             created_at=review.created_at,
             like_count=review.like_count or 0,
+            places=places,
         ))
     return items
 

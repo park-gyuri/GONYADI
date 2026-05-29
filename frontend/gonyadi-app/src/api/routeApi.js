@@ -1,6 +1,22 @@
 import { apiClient } from './apiClient';
 import { mockApiData } from '../data/dummyData';
 
+// 🌟 메모리 기반 캐시 (전달 데이터 크기가 너무 커서 Navigation Parameter 전송 실패하는 문제 해결용)
+let currentRecommendationResult = null;
+let currentRecommendationRequest = null;
+
+export const setRecommendationCache = (data, request) => {
+  currentRecommendationResult = data;
+  currentRecommendationRequest = request;
+};
+
+export const getRecommendationCache = () => {
+  return {
+    data: currentRecommendationResult,
+    request: currentRecommendationRequest,
+  };
+};
+
 /**
  * [routeApi.js]
  * 사용자 여행 경로와 관련된 API 통신만 집중적으로 관리하는 곳

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useRoutes } from '../context/RouteContext';
+import { getFullImageUrl } from '../api/apiClient';
 
 const MyReviewHistoryScreen = () => {
   const router = useRouter();
@@ -31,7 +32,7 @@ const MyReviewHistoryScreen = () => {
             >
               <View style={styles.imageSection}>
                 {review.thumbnail ? (
-                  <Image source={{ uri: review.thumbnail }} style={styles.imagePlaceholder} resizeMode="cover" />
+                  <Image source={{ uri: getFullImageUrl(review.thumbnail) }} style={styles.imagePlaceholder} resizeMode="cover" />
                 ) : (
                   <View style={styles.imagePlaceholder} />
                 )}

@@ -18,7 +18,7 @@ try {
 // 🌟 우리가 만든 '폴더 생성 모달' 부품 불러오기!
 import FolderCreateModal from '../components/FolderCreateModal';
 import EmptyRouteState from '../components/EmptyRouteState';
-import { requestNewRoute, saveItinerary } from '../api/routeApi';
+import { requestNewRoute, saveItinerary, getRecommendationCache, setRecommendationCache } from '../api/routeApi';
 import { useRoutes } from '../context/RouteContext';
 import WastebasketIcon from '../components/icons/wastebasketIcon';
 import MarkerIcon from '../components/icons/markerIcon';
@@ -186,9 +186,10 @@ const RouteResultScreen = () => {
   const params = useLocalSearchParams();
   const { folders, addFolder, setAllRoutes } = useRoutes();
 
-  // API로부터 받은 원본 데이터 파싱
-  const apiData = params.response ? JSON.parse(params.response) : null;
-  const originalRequest = params.originalRequest ? JSON.parse(params.originalRequest) : null;
+  // 🌟 메모리 캐시에서 가져오기 (Navigation Parameter 크기 초과 방지)
+  const cache = getRecommendationCache();
+  const apiData = cache.data || (params.response ? JSON.parse(params.response) : null);
+  const originalRequest = cache.request || (params.originalRequest ? JSON.parse(params.originalRequest) : null);
 
   // 장소(places)와 이동수단(route_segments) 추출
   const places = apiData?.places || [];
@@ -465,13 +466,8 @@ const RouteResultScreen = () => {
       console.log('[수정 요청] Payload:', JSON.stringify(modifyData));
       const data = await requestNewRoute(modifyData);
 
-      router.replace({
-        pathname: '/route-result',
-        params: {
-          response: JSON.stringify(data),
-          originalRequest: params.originalRequest || JSON.stringify(originalRequest),
-        }
-      });
+      setRecommendationCache(data, modifyData);
+      router.replace('/route-result');
     } catch (error) {
       console.error('[수정 실패]', error.message);
       Alert.alert('에러', '수정 요청에 실패했습니다. 다시 시도해주세요.');

@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session
+import os
+import shutil
 from src.core.database import get_session
 from src.schemas.user_schema import UserCreate, UserLogin, UserUpdate
 from src.core.security import verify_password, create_access_token, create_refresh_token, verify_access_token, get_current_user
@@ -165,7 +167,8 @@ def get_me(current_user: dict = Depends(get_current_user)):
     return {
         "user_id": current_user.user_id,
         "user_nickname": current_user.user_nickname,
-        "user_email": current_user.user_email
+        "user_email": current_user.user_email,
+        "user_profile_image": current_user.user_profile_image
     }
 
 @router.put("/me")
@@ -182,6 +185,32 @@ def update_me(
     updated_user = user_crud.update_user(current_user, update_data, session)
     return {
         "message": "프로필이 성공적으로 업데이트 되었습니다.",
-        "user_nickname": updated_user.user_nickname
+        "user_nickname": updated_user.user_nickname,
+        "user_profile_image": updated_user.user_profile_image
+    }
+
+@router.post("/me/profile-image")
+def upload_profile_image(
+    file: UploadFile = File(...),
+    current_user = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """현재 로그인한 유저의 프로필 사진을 업로드합니다."""
+    extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+    filename = f"user_{current_user.user_pk}{extension}"
+    file_path = os.path.join("static", "profile_images", filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    relative_url = f"/static/profile_images/{filename}"
+    current_user.user_profile_image = relative_url
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    
+    return {
+        "message": "프로필 이미지가 성공적으로 업로드 되었습니다.",
+        "user_profile_image": relative_url
     }
 

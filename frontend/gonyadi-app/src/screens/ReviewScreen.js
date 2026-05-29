@@ -8,6 +8,7 @@ import PencilIcon from '../components/icons/pencilIcon';
 import HeartIcon from '../components/icons/heartIcon';
 import ShareIcon from '../components/icons/shareIcon';
 import { fetchReviews } from '../api/reviewApi';
+import { BASE_URL, getFullImageUrl } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
 
 const ReviewScreen = () => {
@@ -33,14 +34,89 @@ const ReviewScreen = () => {
     load();
   }, []));
 
+  // 한글 초성 및 부분 매칭 정규식 생성기
+  const createFuzzyRegex = (query) => {
+    if (!query) return new RegExp('');
+    const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cho = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    let pattern = '';
+    
+    for (let i = 0; i < query.length; i++) {
+      const char = query[i];
+      const code = char.charCodeAt(0);
+      
+      // 완성형 한글인 경우
+      if (code >= 44032 && code <= 55203) {
+        // 종성이 없는 경우 (받침 없음) -> 가~깋 처럼 범위로 검색
+        if ((code - 44032) % 28 === 0) {
+          const endChar = String.fromCharCode(code + 27);
+          pattern += `[${char}-${endChar}]`;
+        } else {
+          pattern += char;
+        }
+      } 
+      // 자음(초성)인 경우
+      else {
+        const choIndex = cho.indexOf(char);
+        if (choIndex !== -1) {
+          const start = 44032 + (choIndex * 588);
+          const end = start + 587;
+          pattern += `[${char}${String.fromCharCode(start)}-${String.fromCharCode(end)}]`;
+        } else {
+          pattern += escapeRegExp(char);
+        }
+      }
+    }
+    return new RegExp(pattern, 'i');
+  };
+
+  const q = searchQuery.toLowerCase().replace(/\s+/g, '');
+  const fuzzyRegex = createFuzzyRegex(q);
+
+  // 연관 검색어 (region, places 기반)
+  const allKeywords = Array.from(new Set(
+    reviews.flatMap(r => [r.region, ...(r.places || [])].filter(Boolean))
+  ));
+
+  const suggestedKeywords = searchQuery.trim() === ''
+    ? []
+    : allKeywords.filter(k => {
+        const kLower = k.toLowerCase().replace(/\s+/g, '');
+        return fuzzyRegex.test(kLower);
+      }).sort((a, b) => {
+        const aLower = a.toLowerCase().replace(/\s+/g, '');
+        const bLower = b.toLowerCase().replace(/\s+/g, '');
+
+        // 정확히 일치하는 단어를 초성 매칭보다 우선
+        const aExact = aLower.includes(q);
+        const bExact = bLower.includes(q);
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        // 매칭되는 위치 찾기 (앞쪽일수록 우선순위 높음)
+        const aMatch = aLower.match(fuzzyRegex);
+        const bMatch = bLower.match(fuzzyRegex);
+        const aIndex = aMatch ? aMatch.index : 999;
+        const bIndex = bMatch ? bMatch.index : 999;
+        
+        if (aIndex !== bIndex) return aIndex - bIndex; // 0(시작 단어)일수록 상위 노출
+        return a.length - b.length; // 매칭 위치가 같다면 글자 수가 짧은 것을 우선
+      }).slice(0, 5);
+
   // 검색어 기반 필터링
   const filteredReviews = reviews.filter(r => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    
+    const titleStr = (r.title || "").toLowerCase().replace(/\s+/g, '');
+    const regionStr = (r.region || "").toLowerCase().replace(/\s+/g, '');
+    const previewStr = (r.preview_comment || "").toLowerCase().replace(/\s+/g, '');
+    const placeStrs = (r.places || []).map(p => p.toLowerCase().replace(/\s+/g, ''));
+    
     return (
-      r.title?.toLowerCase().includes(q) ||
-      r.preview_comment?.toLowerCase().includes(q) ||
-      r.region?.toLowerCase().includes(q)
+      fuzzyRegex.test(titleStr) ||
+      fuzzyRegex.test(regionStr) ||
+      fuzzyRegex.test(previewStr) ||
+      placeStrs.some(p => fuzzyRegex.test(p))
     );
   });
 
@@ -56,14 +132,6 @@ const ReviewScreen = () => {
       Alert.alert('공유 실패', e.message);
     }
   };
-
-  // 연관 검색어 (title, region 기반)
-  const allKeywords = Array.from(new Set(
-    reviews.flatMap(r => [r.title, r.region].filter(Boolean))
-  ));
-  const suggestedKeywords = searchQuery.trim() === ''
-    ? []
-    : allKeywords.filter(k => k.includes(searchQuery)).slice(0, 5);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -121,7 +189,7 @@ const ReviewScreen = () => {
               <View style={styles.imageSection}>
                 {review.thumbnail ? (
                   <Image
-                    source={{ uri: review.thumbnail }}
+                    source={{ uri: getFullImageUrl(review.thumbnail) }}
                     style={styles.imagePlaceholder}
                     resizeMode="cover"
                   />
@@ -132,10 +200,17 @@ const ReviewScreen = () => {
 
               <View style={styles.cardInfoRow}>
                 <View style={styles.userInfo}>
-                  {/* 프로필 이미지 추후 서버 데이터로 연동 가능하도록 더미 */}
-                  <View style={styles.userAvatarPlaceholder}>
-                    <Text style={styles.userAvatarText}>{review.author?.substring(0,1) || '유'}</Text>
-                  </View>
+                  {/* 프로필 이미지 서버 데이터 연동 */}
+                  {review.author_profile_image ? (
+                    <Image
+                      source={{ uri: getFullImageUrl(review.author_profile_image) }}
+                      style={styles.userAvatar}
+                    />
+                  ) : (
+                    <View style={styles.userAvatarPlaceholder}>
+                      <Text style={styles.userAvatarText}>{review.author?.substring(0, 1) || '유'}</Text>
+                    </View>
+                  )}
                   <View>
                     <Text style={styles.userName}>{review.author || '익명 사용자'}</Text>
                     <Text style={styles.postDate}>{review.created_at ? review.created_at.substring(0, 10).replace(/-/g, '년 ').replace('년 ', '년 ').replace(' ', '') + '일' : '2025년 8월 12일'}</Text>
@@ -245,6 +320,12 @@ const styles = StyleSheet.create({
     borderColor: '#DDD',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 10,
+  },
+  userAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     marginRight: 10,
   },
   userAvatarText: { color: '#888', fontSize: 12 },

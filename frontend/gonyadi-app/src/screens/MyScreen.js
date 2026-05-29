@@ -10,7 +10,7 @@ import SettingIcon from '../components/icons/settingIcon';
 import PencilIcon from '../components/icons/pencilIcon';
 
 import { useRoutes } from '../context/RouteContext';
-import { apiClient } from '../api/apiClient';
+import { apiClient, BASE_URL } from '../api/apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MyScreen = () => {
@@ -34,9 +34,16 @@ const MyScreen = () => {
         const data = await apiClient('/api/v1/auth/me');
         setUserProfile(data);
         setEditName(data.user_nickname);
-        // 저장된 프로필 이미지 불러오기 (사용자별 키)
-        const savedImage = await AsyncStorage.getItem(`profile_image_${data.user_id}`);
-        if (savedImage) setProfileImage(savedImage);
+        // 서버의 프로필 이미지가 있는 경우 우선 적용, 없으면 기존 로컬 캐시 적용
+        if (data.user_profile_image) {
+          const fullUrl = data.user_profile_image.startsWith('http') 
+            ? data.user_profile_image 
+            : `${BASE_URL}${data.user_profile_image}`;
+          setProfileImage(fullUrl);
+        } else {
+          const savedImage = await AsyncStorage.getItem(`profile_image_${data.user_id}`);
+          if (savedImage) setProfileImage(savedImage);
+        }
       } catch (error) {
         console.error('프로필 로딩 실패:', error);
       }
@@ -67,14 +74,46 @@ const MyScreen = () => {
 
   const saveProfile = async () => {
     try {
+      let uploadedImageUrl = userProfile.user_profile_image;
+
+      // 새 이미지가 로컬 경로(file:// 등)인 경우 서버에 업로드 진행
+      if (profileImage && !profileImage.startsWith('http')) {
+        const filename = profileImage.split('/').pop() || 'profile.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        const formData = new FormData();
+        formData.append('file', {
+          uri: profileImage,
+          name: filename,
+          type: type,
+        });
+
+        const uploadResponse = await apiClient('/api/v1/auth/me/profile-image', {
+          method: 'POST',
+          body: formData,
+        });
+        uploadedImageUrl = uploadResponse.user_profile_image;
+      }
+
       const response = await apiClient('/api/v1/auth/me', {
         method: 'PUT',
-        body: JSON.stringify({ user_nickname: editName })
+        body: JSON.stringify({ 
+          user_nickname: editName,
+          user_profile_image: uploadedImageUrl
+        })
       });
-      setUserProfile({ ...userProfile, user_nickname: response.user_nickname || editName });
+
+      setUserProfile({ 
+        ...userProfile, 
+        user_nickname: response.user_nickname || editName,
+        user_profile_image: response.user_profile_image || uploadedImageUrl
+      });
+
       if (profileImage) {
         await AsyncStorage.setItem(`profile_image_${userProfile.user_id}`, profileImage);
       }
+
       setProfileModalVisible(false);
       Alert.alert('안내', '프로필이 성공적으로 업데이트 되었습니다.');
     } catch (e) {

@@ -11,6 +11,7 @@ class Users(SQLModel, table=True):
     user_email: str = Field(unique=True)
     user_point: int = Field(default=0)
     is_verified: bool = Field(default=False)
+    user_profile_image: Optional[str] = Field(default=None)
     user_created: datetime = Field(default_factory=datetime.now)
 
 # 실제 DB에 테이블 생성은 alembic으로 대체

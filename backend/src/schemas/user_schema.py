@@ -13,3 +13,4 @@ class UserLogin(SQLModel):
 from typing import Optional
 class UserUpdate(SQLModel):
     user_nickname: Optional[str] = None
+    user_profile_image: Optional[str] = None
