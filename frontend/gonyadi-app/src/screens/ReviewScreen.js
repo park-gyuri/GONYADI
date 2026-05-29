@@ -8,6 +8,7 @@ import PencilIcon from '../components/icons/pencilIcon';
 import HeartIcon from '../components/icons/heartIcon';
 import ShareIcon from '../components/icons/shareIcon';
 import { fetchReviews } from '../api/reviewApi';
+import { BASE_URL } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
 
 const ReviewScreen = () => {
@@ -132,10 +133,21 @@ const ReviewScreen = () => {
 
               <View style={styles.cardInfoRow}>
                 <View style={styles.userInfo}>
-                  {/* 프로필 이미지 추후 서버 데이터로 연동 가능하도록 더미 */}
-                  <View style={styles.userAvatarPlaceholder}>
-                    <Text style={styles.userAvatarText}>{review.author?.substring(0,1) || '유'}</Text>
-                  </View>
+                  {/* 프로필 이미지 서버 데이터 연동 */}
+                  {review.author_profile_image ? (
+                    <Image
+                      source={{
+                        uri: review.author_profile_image.startsWith('http')
+                          ? review.author_profile_image
+                          : `${BASE_URL}${review.author_profile_image}`,
+                      }}
+                      style={styles.userAvatar}
+                    />
+                  ) : (
+                    <View style={styles.userAvatarPlaceholder}>
+                      <Text style={styles.userAvatarText}>{review.author?.substring(0, 1) || '유'}</Text>
+                    </View>
+                  )}
                   <View>
                     <Text style={styles.userName}>{review.author || '익명 사용자'}</Text>
                     <Text style={styles.postDate}>{review.created_at ? review.created_at.substring(0, 10).replace(/-/g, '년 ').replace('년 ', '년 ').replace(' ', '') + '일' : '2025년 8월 12일'}</Text>
@@ -245,6 +257,12 @@ const styles = StyleSheet.create({
     borderColor: '#DDD',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 10,
+  },
+  userAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     marginRight: 10,
   },
   userAvatarText: { color: '#888', fontSize: 12 },

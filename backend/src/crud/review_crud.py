@@ -58,6 +58,7 @@ def get_all_reviews(session: Session) -> list[ReviewListItem]:
             thumbnail=thumbnail,
             region=itinerary.region if itinerary else None,
             author=user.user_nickname if user else "익명 사용자",
+            author_profile_image=user.user_profile_image if user else None,
             created_at=review.created_at,
             like_count=review.like_count or 0,
         ))

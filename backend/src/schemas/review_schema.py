@@ -26,6 +26,7 @@ class ReviewListItem(BaseModel):
     thumbnail: Optional[str] = None
     region: Optional[str] = None
     author: Optional[str] = None
+    author_profile_image: Optional[str] = None
     created_at: datetime
     like_count: int = 0
 

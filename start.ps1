@@ -135,8 +135,11 @@ $localIP = (Get-NetIPAddress -AddressFamily IPv4 |
 
 if ($localIP) {
     Write-Ok "Current PC IP: $localIP"
-    Write-Host "   Frontend auto-detects this IP. Manual override:" -ForegroundColor Gray
-    Write-Host "   frontend/gonyadi-app/.env -> EXPO_PUBLIC_API_URL=http://${localIP}:8000" -ForegroundColor Gray
+    
+    # Auto-update frontend .env with the new IP address to prevent connection issues
+    $frontendEnvPath = Join-Path $ProjectRoot "frontend\gonyadi-app\.env"
+    "EXPO_PUBLIC_API_URL=http://${localIP}:8000" | Out-File -FilePath $frontendEnvPath -Encoding utf8
+    Write-Ok "Auto-updated frontend .env with EXPO_PUBLIC_API_URL=http://${localIP}:8000"
 }
 
 Write-Host ""
@@ -150,4 +153,4 @@ Write-Host ""
 # Activate venv and run uvicorn (foreground - Ctrl+C to stop)
 & $VenvActivate
 Set-Location $BackendDir
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+& "$BackendDir\venv\Scripts\python.exe" -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
