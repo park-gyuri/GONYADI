@@ -152,9 +152,15 @@ const SegmentModeDisplay = ({ routes = {}, currentModeKey, isPickerOpen, onToggl
   const renderCurrentMode = () => {
     if (!activeRoute) {
       return (
-        <TouchableOpacity style={transitStyles.simpleRow} onPress={onTogglePicker} activeOpacity={0.7}>
-          <Text style={[transitStyles.simpleText, { color: '#aaa' }]}>경로 정보 없음</Text>
-          <Text style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>▾</Text>
+        <TouchableOpacity
+          style={[transitStyles.card, { backgroundColor: '#F5F5F5', borderColor: '#DDD' }]}
+          onPress={onTogglePicker}
+          activeOpacity={0.7}
+        >
+          <View style={transitStyles.summaryRow}>
+            <Text style={[transitStyles.summaryTime, { color: '#aaa' }]}>경로 정보 없음</Text>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: '#E8E8E8', color: '#aaa' }]}>▾</Text>
+          </View>
         </TouchableOpacity>
       );
     }
@@ -176,15 +182,30 @@ const SegmentModeDisplay = ({ routes = {}, currentModeKey, isPickerOpen, onToggl
         </View>
       );
     }
+    const MODE_COLORS = {
+      walk:    { bg: '#F5F5F5', border: '#AAAAAA', text: '#555555', chip: '#E8E8E8' },
+      drive:   { bg: '#FFF5EE', border: '#E07B39', text: '#C0622A', chip: '#FFE5D0' },
+      bicycle: { bg: '#F2FBEB', border: '#5BB025', text: '#3D8C10', chip: '#D8F5BC' },
+    };
+    const mc = MODE_COLORS[activeKey] ?? { bg: '#F7FBFF', border: '#DDE8F5', text: '#43B0AB', chip: '#E8F0FE' };
     const distKm = activeRoute.distance_meters >= 1000
       ? `${(activeRoute.distance_meters / 1000).toFixed(1)}km`
       : `${activeRoute.distance_meters}m`;
     return (
-      <TouchableOpacity style={transitStyles.simpleRow} onPress={onTogglePicker} activeOpacity={0.7}>
-        <Text style={transitStyles.simpleText}>
-          {MODE_LABEL[activeKey]} {Math.round(activeRoute.duration_minutes)}분 · {distKm}
-        </Text>
-        <Text style={{ fontSize: 11, color: '#999', marginLeft: 4 }}>▾</Text>
+      <TouchableOpacity
+        style={[transitStyles.card, { backgroundColor: mc.bg, borderColor: mc.border }]}
+        onPress={onTogglePicker}
+        activeOpacity={0.7}
+      >
+        <View style={transitStyles.summaryRow}>
+          <Text style={[transitStyles.summaryTime, { color: mc.text }]}>
+            {MODE_LABEL[activeKey]} {Math.round(activeRoute.duration_minutes)}분
+          </Text>
+          <View style={transitStyles.summaryMeta}>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: mc.chip, color: mc.text }]}>{distKm}</Text>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: mc.chip, color: mc.text }]}>▾</Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
