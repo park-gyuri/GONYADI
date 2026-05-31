@@ -16,25 +16,25 @@ def upload_review_images(
     files: List[UploadFile] = File(...),
     current_user: dict = Depends(get_current_user)
 ):
+    from src.core.supabase_client import upload_file_to_supabase
     """
-    여러 장의 리뷰 이미지를 서버에 업로드하고 서버 내 상대 경로 리스트를 반환합니다.
+    여러 장의 리뷰 이미지를 Supabase Storage에 업로드하고 Public URL 리스트를 반환합니다.
     """
-    upload_dir = os.path.join("static", "review_images")
-    os.makedirs(upload_dir, exist_ok=True)
+    saved_urls = []
     
-    saved_paths = []
     for file in files:
         extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
         unique_filename = f"review_{uuid.uuid4().hex}{extension}"
-        file_path = os.path.join(upload_dir, unique_filename)
         
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        try:
+            file_bytes = file.file.read()
+            public_url = upload_file_to_supabase(file_bytes=file_bytes, file_name=unique_filename, bucket_name="images")
+            saved_urls.append(public_url)
+        except Exception as e:
+            print(f"[ERROR] Supabase 리뷰 이미지 업로드 실패 ({unique_filename}): {e}")
+            raise HTTPException(status_code=500, detail=f"이미지 업로드 중 오류 발생: {str(e)}")
             
-        relative_url = f"/static/review_images/{unique_filename}"
-        saved_paths.append(relative_url)
-        
-    return {"uploaded_urls": saved_paths}
+    return {"uploaded_urls": saved_urls}
 
 @router.post("/reviews", response_model=ReviewDetailResponse)
 def create_review(

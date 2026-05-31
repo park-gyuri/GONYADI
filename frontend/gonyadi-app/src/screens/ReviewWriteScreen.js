@@ -266,10 +266,8 @@ const ReviewWriteScreen = () => {
 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
         {/* 제목 입력 */}
-        <View style={styles.sectionTitleContainer}>
-          <Text style={styles.sectionTitle}>[제목 작성]</Text>
-        </View>
         <View style={styles.mainTitleContainer}>
+          <Text style={styles.titlePrefix}>Title <Text style={styles.titleDivider}>|</Text></Text>
           <TextInput
             style={styles.mainTitleInput}
             placeholder="제목을 입력하세요."
@@ -297,9 +295,6 @@ const ReviewWriteScreen = () => {
         )}
 
         {/* 선택된 일차의 장소 목록 */}
-        <View style={styles.sectionTitleContainer}>
-          <Text style={styles.sectionTitle}>[후기 작성]</Text>
-        </View>
         <View style={styles.listContainer}>
           {currentDayPlaces.map((item, index) => {
             const isLast = index === currentDayPlaces.length - 1;
@@ -399,6 +394,8 @@ const styles = StyleSheet.create({
   scrollArea: { flex: 1 },
 
   mainTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#C4CCD8',
@@ -409,7 +406,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 16,
   },
-  mainTitleInput: { fontSize: 16, fontWeight: 'bold', color: '#111' },
+  titlePrefix: { fontSize: 16, fontWeight: 'bold', color: '#43B0AB', marginRight: 4 },
+  titleDivider: { color: '#43B0AB', marginHorizontal: 2 },
+  mainTitleInput: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#111' },
 
   dayTabScroll: { marginBottom: 16 },
   dayTabContainer: { paddingHorizontal: 10, gap: 8, flexDirection: 'row' },
@@ -417,9 +416,6 @@ const styles = StyleSheet.create({
   dayTabActive: { backgroundColor: '#43B0AB', borderColor: '#43B0AB' },
   dayTabText: { fontSize: 14, color: '#888', fontWeight: '600' },
   dayTabTextActive: { color: '#FFFFFF' },
-
-  sectionTitleContainer: { paddingHorizontal: 16, marginTop: 10, marginBottom: 5 },
-  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#43B0AB' },
 
   listContainer: { paddingHorizontal: 10 },
   rowContainer: { flexDirection: 'row' },
