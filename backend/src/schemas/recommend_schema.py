@@ -45,6 +45,7 @@ class PlaceResult(BaseModel):
     reason:                   str   # 추천 사유
     duration:                 int   # 예상 소요 시간 (분)
     category:                 str   # 장소 카테고리
+    address:                  Optional[str] = None  # 실제 주소 (DB에서 채움)
     accessibility_unconfirmed: bool = False  # 휠체어 조건 시 접근성 미확인 장소 여부
     pet_unconfirmed:           bool = False  # 반려동물 조건 시 동반 가능 여부 미확인
 
@@ -57,6 +58,7 @@ class PlaceCandidate(BaseModel):
     lat:             float
     lng:             float
     category:        str
+    address:         Optional[str] = None
     distance_km:     float
     is_pet_friendly:     Optional[bool] = None  # None=미확인, True=가능
     is_accessible:       Optional[bool] = None  # None=미확인, True=무장애 가능
@@ -105,6 +107,8 @@ class RecommendRequest(BaseModel):
 
     # 기존 일정 (재추천 기능 시 프론트엔드에서 기존에 받았던 장소 배열을 다시 전달)
     original_places: Optional[list[PlaceResult]] = Field(default=None)
+    # 일차별 구조 보존용 (original_places의 일차 정보 포함 버전)
+    original_schedule: Optional[list[DaySchedule]] = Field(default=None)
 
     # [RAG] 중심 좌표 (프론트엔드에서 지도 중심점 또는 사용자 현재 위치 전달)
     # None이면 region 문자열 기반 기존 방식으로 fallback

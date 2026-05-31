@@ -172,7 +172,7 @@ async def _fetch_google_places_nearby(
         return []
 
 
-async def _fetch_google_places_text_search(
+async def fetch_google_places_text_search(
     query: str,
     lat: float,
     lng: float,
@@ -289,7 +289,7 @@ async def retrieve_and_filter_candidates(
     pinned_names: set[str] = set()
     if req.user_message.strip():
         text_query = f"{req.region} {req.user_message}"
-        mention_results = await _fetch_google_places_text_search(
+        mention_results = await fetch_google_places_text_search(
             query=text_query,
             lat=req.center_lat,
             lng=req.center_lng,

@@ -214,67 +214,103 @@ def delete_review(session: Session, review_id: int, user_id: int) -> bool:
     session.commit()
     return True
 
+def _find_place_key_in_itinerary(rec_data: dict, place_name: str) -> str | None:
+    """itinerary의 recommendation_data에서 장소명에 해당하는 place_N key를 찾아 반환."""
+    schedule = rec_data.get("schedule", [])
+    gi = 0
+    for day in schedule:
+        for place in day.get("places", []):
+            if place.get("name") == place_name:
+                return f"place_{gi}"
+            gi += 1
+    return None
+
+
 def get_place_reviews(session: Session, place_id: str) -> list[PlaceReviewItem]:
-    # JSON 내부에 place_id 키가 존재하는 리뷰들만 필터링 (Python 레벨 필터링: MVP)
-    statement = select(Reviews, Users).join(
-        Users, Reviews.user_id == Users.user_pk, isouter=True
-    ).order_by(Reviews.created_at.desc())
-    
+    from src.models.itinerary import Itineraries
+    statement = (
+        select(Reviews, Users, Itineraries)
+        .join(Users, Reviews.user_id == Users.user_pk, isouter=True)
+        .join(Itineraries, Reviews.itinerary_id == Itineraries.itinerary_pk, isouter=True)
+        .order_by(Reviews.created_at.desc())
+    )
+
     results = session.exec(statement).all()
     place_reviews = []
-    
-    for review, user in results:
+
+    for review, user, itinerary in results:
         ratings = review.ratings or {}
         comments = review.comments or {}
         photos = review.photos or {}
-        
-        # 해당 장소에 대한 별점이나 코멘트가 있는 경우만 추가
-        if place_id in ratings or place_id in comments:
+
+        # 1) 이름 key로 직접 매칭 (신규 방식)
+        actual_key = place_id if (place_id in ratings or place_id in comments) else None
+
+        # 2) place_N 인덱스 key로 매칭 (기존 방식 호환)
+        if actual_key is None and itinerary and itinerary.recommendation_data:
+            index_key = _find_place_key_in_itinerary(itinerary.recommendation_data, place_id)
+            if index_key and (index_key in ratings or index_key in comments):
+                actual_key = index_key
+
+        if actual_key:
             place_reviews.append(PlaceReviewItem(
                 review_pk=review.review_pk,
                 author=user.user_nickname if user else "익명 사용자",
                 author_profile_image=user.user_profile_image if user else None,
-                rating=ratings.get(place_id, 0),
-                comment=comments.get(place_id),
-                photos=photos.get(place_id, []),
+                rating=ratings.get(actual_key, 0),
+                comment=comments.get(actual_key),
+                photos=photos.get(actual_key, []),
                 created_at=review.created_at
             ))
-            
+
     return place_reviews
 
 def get_places_stats(session: Session, place_ids: list[str]) -> dict[str, PlaceStats]:
-    statement = select(Reviews)
-    reviews = session.exec(statement).all()
-    
+    from src.models.itinerary import Itineraries
+    statement = (
+        select(Reviews, Itineraries)
+        .join(Itineraries, Reviews.itinerary_id == Itineraries.itinerary_pk, isouter=True)
+    )
+    results = session.exec(statement).all()
+
     stats_map = {}
-    
+
     for pid in place_ids:
         total_rating = 0
         count = 0
         best_comment = None
-        
-        for review in reviews:
+
+        for review, itinerary in results:
             ratings = review.ratings or {}
             comments = review.comments or {}
-            
-            if pid in ratings:
-                r = ratings[pid]
-                if r > 0:
-                    total_rating += r
-                    count += 1
-            
-            # 좋은 요약 코멘트를 하나 뽑기 (별점이 높고 길이가 적당한 것)
-            if pid in comments and comments[pid] and len(comments[pid].strip()) > 0:
-                # MVP 방식: 가장 첫 번째로 발견된 괜찮은 코멘트
-                if not best_comment and (pid not in ratings or ratings[pid] >= 4):
-                    best_comment = comments[pid].strip()
+
+            # 1) 이름 key 직접 매칭
+            actual_key = pid if pid in ratings or pid in comments else None
+
+            # 2) place_N 인덱스 key 매칭 (기존 리뷰 호환)
+            if actual_key is None and itinerary and itinerary.recommendation_data:
+                index_key = _find_place_key_in_itinerary(itinerary.recommendation_data, pid)
+                if index_key and (index_key in ratings or index_key in comments):
+                    actual_key = index_key
+
+            if actual_key is None:
+                continue
+
+            r = ratings.get(actual_key, 0)
+            if r > 0:
+                total_rating += r
+                count += 1
+
+            comment_val = comments.get(actual_key, "")
+            if comment_val and len(comment_val.strip()) > 0:
+                if not best_comment and (actual_key not in ratings or ratings[actual_key] >= 4):
+                    best_comment = comment_val.strip()
 
         if count > 0:
             avg = round(total_rating / count, 1)
-            # 만약 좋은 코멘트가 없으면 기본 긍정 문구
             summary = best_comment if best_comment else f"이 장소를 방문한 {count}명의 여행자가 추천합니다."
             stats_map[pid] = PlaceStats(average_rating=avg, review_count=count, summary=summary)
         else:
             stats_map[pid] = PlaceStats(average_rating=0.0, review_count=0, summary=None)
-            
+
     return stats_map

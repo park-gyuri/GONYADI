@@ -162,16 +162,31 @@ def build_rag_prompt(req: RecommendRequest, candidates: list[PlaceCandidate], pi
 
     # 기존 일정이 있을 때 (재추천 모드)
     refined_history = ""
-    if req.original_places:
-        history_lines = [f"{i+1}. {p.name} ({p.category}) - {p.reason}" for i, p in enumerate(req.original_places)]
+    if req.original_schedule:
+        day_lines = []
+        for day_sched in req.original_schedule:
+            day_lines.append(f"\n  【{day_sched.day}일차】")
+            for i, p in enumerate(day_sched.places):
+                day_lines.append(f"    {i+1}. {p.name} ({p.category})")
+        refined_history = (
+            "\n[현재 일정 — 일차별 순서]" +
+            "".join(day_lines) +
+            "\n\n(🚨재추천 규칙 — 반드시 준수🚨:\n"
+            "1. 위 [현재 일정]의 각 장소와 일차별 순서를 절대 변경하지 마세요.\n"
+            "2. 오직 [상세 요청]에서 명시적으로 지정한 변경사항(추가·삭제·교체)만 적용하세요.\n"
+            "3. '마지막에 추가'는 마지막 일차의 맨 끝 자리에 삽입하는 것입니다.\n"
+            "4. 삭제·교체 대상이 아닌 기존 장소는 이름·순서·일차 모두 그대로 유지하세요.\n"
+            "5. 기존 장소의 순서를 재배치하거나 다른 일차로 옮기지 마세요.)\n"
+        )
+    elif req.original_places:
+        history_lines = [f"{i+1}. {p.name} ({p.category})" for i, p in enumerate(req.original_places)]
         refined_history = (
             "\n[현재 일정]\n" +
             "\n".join(history_lines) +
             "\n\n(🚨재추천 규칙🚨:\n"
             "1. 위 [현재 일정]은 사용자가 이미 선택한 장소들입니다.\n"
-            "2. 사용자가 [상세 요청]을 통해 수정을 요구한 사항(예: 특정 장소 제외, 새로운 테마 추가 등)을 정확히 파악하세요.\n"
-            "3. 요구사항에 따라 일부 장소를 삭제하거나 새로운 장소로 교체/추가하되, **수정 대상이 아닌 기존 장소들은 출력 JSON 배열에 그대로(이름과 내용 동일하게) 포함**시켜야 합니다.\n"
-            "4. 전체 장소의 개수나 일정이 적절히 유지되도록 하세요.)\n"
+            "2. 사용자가 [상세 요청]을 통해 수정을 요구한 사항만 정확히 반영하세요.\n"
+            "3. 수정 대상이 아닌 기존 장소는 이름과 순서를 그대로 유지하세요.)\n"
         )
 
     # 필수 포함 장소 (사용자 상세 요청에서 언급된 장소 — Spatial Filter 후에도 보존됨)
