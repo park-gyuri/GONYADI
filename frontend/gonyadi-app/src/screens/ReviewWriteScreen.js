@@ -92,6 +92,9 @@ const ReviewWriteScreen = () => {
       return;
     }
 
+    // 기존 photos 복사본을 만들어 서버 URL로 교체 준비 (catch 블록에서도 참조 가능하도록 try 밖으로 뺌)
+    let updatedPhotos = JSON.parse(JSON.stringify(photos));
+
     try {
       // 1. 새 이미지들(file://)을 수집하여 업로드
       const newImagesToUpload = [];
@@ -105,9 +108,6 @@ const ReviewWriteScreen = () => {
           }
         });
       });
-
-      // 기존 photos 복사본을 만들어 서버 URL로 교체 준비
-      let updatedPhotos = JSON.parse(JSON.stringify(photos));
 
       if (newImagesToUpload.length > 0) {
         const formData = new FormData();
@@ -153,7 +153,6 @@ const ReviewWriteScreen = () => {
           }
         ]);
       } else {
-        // 새 작성 모드
         const response = await createReview({
           itinerary_id: Number(id),
           title: mainTitle,
@@ -178,21 +177,9 @@ const ReviewWriteScreen = () => {
       }
     } catch (e) {
       console.error('[ReviewWrite] 저장 실패:', e.message);
-      if (!isEditMode) {
-        // 새 작성 Fallback
-        addReview({
-          id: Date.now(),
-          routeId: id,
-          title: mainTitle,
-          content: Object.values(comments)[0] || '내용 없음',
-          thumbnail: Object.values(updatedPhotos)[0]?.[0] || null,
-        });
-        setSaveModalVisible(false);
-        router.replace('/review');
-      } else {
-        Alert.alert('오류', '수정에 실패했습니다: ' + e.message);
-        setSaveModalVisible(false);
-      }
+      setSaveModalVisible(false);
+      Alert.alert('알림', `저장 중 오류가 발생했습니다: ${e.message}`);
+      setIsSaving(false);
     }
   };
 

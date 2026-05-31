@@ -92,7 +92,7 @@ const MyScreen = () => {
         const uploadResponse = await apiClient('/api/v1/auth/me/profile-image', {
           method: 'POST',
           body: formData,
-        });
+        }, 30000);
         uploadedImageUrl = uploadResponse.user_profile_image;
       }
 
