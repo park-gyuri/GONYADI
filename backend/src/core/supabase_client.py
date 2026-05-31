@@ -20,7 +20,7 @@ def upload_file_to_supabase(file_bytes: bytes, file_name: str, bucket_name: str 
         "Content-Type": "image/jpeg",
     }
     
-    response = requests.post(upload_url, headers=headers, data=file_bytes)
+    response = requests.post(upload_url, headers=headers, data=file_bytes, timeout=30)
     
     if response.status_code not in (200, 201):
         raise Exception(f"Failed to upload to Supabase: {response.text}")
