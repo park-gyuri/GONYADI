@@ -163,6 +163,7 @@ const SavedRouteDetailScreen = () => {
   const [placesStats, setPlacesStats] = useState({});
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false); // 로컬 UI 반영용 (선택사항)
+  const [isNoRouteModalVisible, setNoRouteModalVisible] = useState(false);
 
   const mapRef = useRef(null);
   const scrollViewRef = useRef(null);
@@ -359,9 +360,15 @@ const SavedRouteDetailScreen = () => {
   // 수정 요청
   const handleModifySubmit = async () => {
     if (!modifyText.trim()) return;
+
+    const allCurrentPlaces = Object.values(daysData).flat();
+    if (allCurrentPlaces.length === 0) {
+      setNoRouteModalVisible(true);
+      return;
+    }
+
     setIsModifying(true);
     try {
-      const allCurrentPlaces = Object.values(daysData).flat();
       const placesForApi = allCurrentPlaces.map(p => ({
         name: p.name,
         lat: p.lat ?? 0,
@@ -768,6 +775,33 @@ const SavedRouteDetailScreen = () => {
         </TouchableOpacity>
       </Modal>
       <FolderCreateModal visible={isFolderCreateVisible} onClose={() => setFolderCreateVisible(false)} onSubmit={handleCreateFolder} />
+
+      {/* 경로 없음 안내 팝업 */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isNoRouteModalVisible}
+        onRequestClose={() => setNoRouteModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNoRouteModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.saveModalBox}>
+            <Text style={styles.noRouteModalTitle}>경로 없음</Text>
+            <Text style={styles.noRouteModalMessage}>
+              수정할 경로가 없습니다.{'\n'}장소를 먼저 추가하거나 새로운 경로를 추천받아주세요.
+            </Text>
+            <TouchableOpacity
+              style={styles.noRouteModalBtn}
+              onPress={() => setNoRouteModalVisible(false)}
+            >
+              <Text style={styles.noRouteModalBtnText}>확인</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -846,7 +880,10 @@ const styles = StyleSheet.create({
   saveTitleInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 10, padding: 10, marginBottom: 20 },
   saveConfirmBtn: { backgroundColor: '#A9E2D9', padding: 15, borderRadius: 10, alignItems: 'center' },
   saveConfirmBtnText: { fontWeight: 'bold' },
-
+  noRouteModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111', marginBottom: 12, textAlign: 'center' },
+  noRouteModalMessage: { fontSize: 14, color: '#555', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  noRouteModalBtn: { backgroundColor: '#A9E2D9', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  noRouteModalBtnText: { fontSize: 15, fontWeight: 'bold', color: '#111' },
   reviewModeContainer: { flex: 1, backgroundColor: '#FFFFFF' },
   reviewModeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#EEE' },
   reviewModeBackBtn: { padding: 10 },
@@ -869,7 +906,7 @@ const styles = StyleSheet.create({
   placeRatingText: { fontSize: 14, fontWeight: 'bold', color: '#43B0AB' },
   reviewCountText: { fontSize: 12, color: '#888', fontWeight: 'normal', textDecorationLine: 'underline' },
   summaryRow: { backgroundColor: '#F8F9FA', padding: 8, borderRadius: 8, marginTop: 4, borderLeftWidth: 3, borderLeftColor: '#43B0AB', marginLeft: 30 },
-  placeSummaryText: { fontSize: 13, color: '#555', fontStyle: 'italic' }
+  placeSummaryText: { fontSize: 13, color: '#555', fontStyle: 'italic' },
 });
 
 export default SavedRouteDetailScreen;

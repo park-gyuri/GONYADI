@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from src.core.database import get_session
 from src.schemas.recommend_schema import (
-    RecommendRequest, RecommendResponse,
+    RecommendRequest, RecommendResponse, SegmentRouteRequest,
     RouteSegment, RouteDetail, DaySchedule, PlaceResult,
 )
 from src.services.prompt_builder import build_rag_prompt
@@ -222,6 +222,28 @@ def _schedule_to_route_segments(schedule: list[DaySchedule], transport_names: li
         if len(day_sched.places) > 1:
             all_segments.extend(_build_route_segments(day_sched.places, transport_names))
     return all_segments
+
+
+@router.post("/segment-route")
+async def get_segment_route(req: SegmentRouteRequest):
+    """구간 하나의 경로를 온디맨드로 조회한다 (결과 화면에서 이동수단 변경 시 호출)."""
+    from src.services.google_routes import get_route_between_places
+    transport_name = req.transport.value
+    loop = asyncio.get_event_loop()
+    routes = await loop.run_in_executor(
+        None,
+        get_route_between_places,
+        req.origin_lat, req.origin_lng,
+        req.dest_lat,   req.dest_lng,
+        [transport_name],
+    )
+    _key_map = {"도보": "walk", "자동차": "drive", "자전거": "bicycle", "대중교통": "transit"}
+    mode_key = _key_map[transport_name]
+    raw = routes.get(mode_key)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="해당 구간의 경로를 찾을 수 없습니다.")
+    route = RouteDetail(**raw) if not isinstance(raw, RouteDetail) else raw
+    return {"mode_key": mode_key, "route": route}
 
 
 @router.post("", response_model=RecommendResponse)

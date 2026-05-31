@@ -108,3 +108,14 @@ export const getItineraryDetail = async (itineraryId) => {
   return await apiClient(`/api/v1/itineraries/${itineraryId}`);
 };
 
+/**
+ * 7. 단일 구간 경로 온디맨드 조회 (결과 화면에서 이동수단 변경 시)
+ * @param {{ origin_lat, origin_lng, dest_lat, dest_lng, transport }} params
+ */
+export const fetchSegmentRoute = async ({ origin_lat, origin_lng, dest_lat, dest_lng, transport }) => {
+  return await apiClient('/api/v1/recommend/segment-route', {
+    method: 'POST',
+    body: JSON.stringify({ origin_lat, origin_lng, dest_lat, dest_lng, transport }),
+  }, 20000);
+};
+

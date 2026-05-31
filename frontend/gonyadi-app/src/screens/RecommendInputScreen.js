@@ -383,13 +383,21 @@ const RecommendInputScreen = () => {
     setSelectedTags(selectedTags.filter((tag) => tag !== tagToRemove));
   };
 
-  // 태그 토글 함수 (바텀 시트에서 다중 선택/해제)
+  // 이동수단은 단일 선택, 나머지(테마/조건)는 다중 선택
+  const TRANSPORT_TAGS = ['도보', '자동차', '자전거', '대중교통'];
   const handleToggleTag = (tag) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter(t => t !== tag));
+    if (TRANSPORT_TAGS.includes(tag)) {
+      if (!selectedTags.includes(tag)) {
+        setSelectedTags(prev => [...prev.filter(t => !TRANSPORT_TAGS.includes(t)), tag]);
+        setIsTagError(false);
+      }
     } else {
-      setSelectedTags([...selectedTags, tag]);
-      setIsTagError(false);
+      if (selectedTags.includes(tag)) {
+        setSelectedTags(selectedTags.filter(t => t !== tag));
+      } else {
+        setSelectedTags([...selectedTags, tag]);
+        setIsTagError(false);
+      }
     }
   };
 
@@ -664,7 +672,7 @@ const RecommendInputScreen = () => {
             <Text style={styles.sheetTitle}>원하는 여행 카테고리 선택</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
 
-              <Text style={styles.categorySectionTitle}>이동수단</Text>
+              <Text style={styles.categorySectionTitle}>이동수단 (1개 선택)</Text>
               <View style={styles.categoryTagsWrapper}>
                 {['도보', '자동차', '자전거', '대중교통'].map((item) => {
                   const isSelected = selectedTags.includes(item);

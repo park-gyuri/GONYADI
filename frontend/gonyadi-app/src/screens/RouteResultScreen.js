@@ -18,7 +18,7 @@ try {
 // 🌟 우리가 만든 '폴더 생성 모달' 부품 불러오기!
 import FolderCreateModal from '../components/FolderCreateModal';
 import EmptyRouteState from '../components/EmptyRouteState';
-import { requestNewRoute, saveItinerary, getRecommendationCache, setRecommendationCache } from '../api/routeApi';
+import { requestNewRoute, saveItinerary, getRecommendationCache, setRecommendationCache, fetchSegmentRoute } from '../api/routeApi';
 import { fetchPlaceReviews, fetchPlacesStats } from '../api/reviewApi';
 import { getFullImageUrl } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
@@ -61,6 +61,12 @@ function getSubPathColor(trafficType, lane) {
   if (trafficType === 1) return SUBWAY_COLORS[lane?.[0]?.subwayCode] ?? '#555555'; // 지하철
   return '#43B0AB'; // 기본
 }
+
+// ── 이동수단 키 매핑 ──────────────────────────────────────────────────────
+const TRANSPORT_TO_KEY = { '도보': 'walk', '자동차': 'drive', '자전거': 'bicycle', '대중교통': 'transit' };
+const KEY_TO_TRANSPORT = { walk: '도보', drive: '자동차', bicycle: '자전거', transit: '대중교통' };
+const MODE_LABEL = { walk: '🚶 도보', drive: '🚗 자동차', bicycle: '🚴 자전거', transit: '🚌 대중교통' };
+const ALL_MODE_KEYS = ['walk', 'drive', 'bicycle', 'transit'];
 
 // ── SubPathRow: 단일 구간 렌더링 ──────────────────────────────────────────
 const SubPathRow = ({ sub, isLast }) => {
@@ -137,48 +143,125 @@ const SubPathRow = ({ sub, isLast }) => {
   return null;
 };
 
-// ── TransitDetailCard: 대중교통 전체 구간 카드 ───────────────────────────────
-const TransitDetailCard = ({ segment }) => {
-  const transitRoute = segment?.routes?.transit;
+// ── SegmentModeDisplay: 이동수단 표시 + 탭하면 4가지 수단 칩 펼침 ──────────────
+const SegmentModeDisplay = ({ routes = {}, currentModeKey, isPickerOpen, onTogglePicker, onSelectMode, loadingModes = new Set() }) => {
+  const activeKey = (currentModeKey && routes[currentModeKey] != null) ? currentModeKey
+    : ALL_MODE_KEYS.find(k => routes[k] != null) ?? ALL_MODE_KEYS[0];
+  const activeRoute = routes[activeKey];
 
-  // 대중교통이 없으면 도보/자동차 등 단순 텍스트 표시
-  if (!transitRoute) {
-    const mode = segment?.routes ? Object.keys(segment.routes)[0] : null;
-    const route = mode ? segment.routes[mode] : null;
-    if (!route) return null;
-    const label = mode === 'walk' ? '🚶 도보'
-      : mode === 'drive' ? '🚗 자동차'
-        : mode === 'bicycle' ? '🚴 자전거'
-          : mode;
+  const renderCurrentMode = () => {
+    if (!activeRoute) {
+      return (
+        <TouchableOpacity
+          style={[transitStyles.card, { backgroundColor: '#F5F5F5', borderColor: '#DDD' }]}
+          onPress={onTogglePicker}
+          activeOpacity={0.7}
+        >
+          <View style={transitStyles.summaryRow}>
+            <Text style={[transitStyles.summaryTime, { color: '#aaa' }]}>경로 정보 없음</Text>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: '#E8E8E8', color: '#aaa' }]}>▾</Text>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+    if (activeKey === 'transit' && activeRoute.transit_sub_paths?.length > 0) {
+      const { transit_sub_paths = [], transit_payment, transit_total_walk, duration_minutes } = activeRoute;
+      return (
+        <View style={transitStyles.card}>
+          <TouchableOpacity style={transitStyles.summaryRow} onPress={onTogglePicker} activeOpacity={0.7}>
+            <Text style={transitStyles.summaryTime}>🚌 대중교통 {Math.round(duration_minutes)}분</Text>
+            <View style={transitStyles.summaryMeta}>
+              {transit_payment > 0 && <Text style={transitStyles.summaryChip}>{transit_payment.toLocaleString()}원</Text>}
+              {transit_total_walk > 0 && <Text style={transitStyles.summaryChip}>도보 {transit_total_walk}m</Text>}
+              <Text style={transitStyles.summaryChip}>▾</Text>
+            </View>
+          </TouchableOpacity>
+          {transit_sub_paths.map((sub, i) => (
+            <SubPathRow key={i} sub={sub} isLast={i === transit_sub_paths.length - 1} />
+          ))}
+        </View>
+      );
+    }
+    const MODE_COLORS = {
+      walk:    { bg: '#F5F5F5', border: '#AAAAAA', text: '#555555', chip: '#E8E8E8' },
+      drive:   { bg: '#FFF5EE', border: '#E07B39', text: '#C0622A', chip: '#FFE5D0' },
+      bicycle: { bg: '#F2FBEB', border: '#5BB025', text: '#3D8C10', chip: '#D8F5BC' },
+    };
+    const mc = MODE_COLORS[activeKey] ?? { bg: '#F7FBFF', border: '#DDE8F5', text: '#43B0AB', chip: '#E8F0FE' };
+    const distKm = activeRoute.distance_meters >= 1000
+      ? `${(activeRoute.distance_meters / 1000).toFixed(1)}km`
+      : `${activeRoute.distance_meters}m`;
     return (
-      <View style={transitStyles.simpleRow}>
-        <Text style={transitStyles.simpleText}>
-          {label} {Math.round(route.duration_minutes)}분 · {route.distance_meters}m
-        </Text>
-      </View>
+      <TouchableOpacity
+        style={[transitStyles.card, { backgroundColor: mc.bg, borderColor: mc.border }]}
+        onPress={onTogglePicker}
+        activeOpacity={0.7}
+      >
+        <View style={transitStyles.summaryRow}>
+          <Text style={[transitStyles.summaryTime, { color: mc.text }]}>
+            {MODE_LABEL[activeKey]} {Math.round(activeRoute.duration_minutes)}분
+          </Text>
+          <View style={transitStyles.summaryMeta}>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: mc.chip, color: mc.text }]}>{distKm}</Text>
+            <Text style={[transitStyles.summaryChip, { backgroundColor: mc.chip, color: mc.text }]}>▾</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
     );
-  }
-
-  const { transit_sub_paths = [], transit_payment, transit_total_walk, duration_minutes } = transitRoute;
+  };
 
   return (
-    <View style={transitStyles.card}>
-      {/* 요약 헤더 */}
-      <View style={transitStyles.summaryRow}>
-        <Text style={transitStyles.summaryTime}>🚌 대중교통 {Math.round(duration_minutes)}분</Text>
-        <View style={transitStyles.summaryMeta}>
-          {transit_payment > 0 && (
-            <Text style={transitStyles.summaryChip}>{transit_payment.toLocaleString()}원</Text>
-          )}
-          {transit_total_walk > 0 && (
-            <Text style={transitStyles.summaryChip}>도보 {transit_total_walk}m</Text>
-          )}
+    <View>
+      {renderCurrentMode()}
+      {isPickerOpen && (
+        <View style={transitStyles.modePicker}>
+          {ALL_MODE_KEYS.map(key => {
+            const route = routes[key];
+            const isLoading = loadingModes.has(key);
+            const isActive = key === activeKey;
+            const isTransitWithData = key === 'transit' && route?.transit_sub_paths?.length > 0;
+            return (
+              <View key={key} style={{ width: isTransitWithData ? '100%' : 'auto' }}>
+                <TouchableOpacity
+                  style={[transitStyles.modeChip, isActive && transitStyles.modeChipActive, isLoading && { opacity: 0.6 }]}
+                  onPress={() => onSelectMode(key)}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <ActivityIndicator size="small" color="#43B0AB" style={{ marginBottom: 2 }} />
+                      <Text style={[transitStyles.modeChipText, isActive && transitStyles.modeChipTextActive]}>{MODE_LABEL[key]}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[transitStyles.modeChipText, isActive && transitStyles.modeChipTextActive]}>{MODE_LABEL[key]}</Text>
+                      {route != null ? (
+                        <Text style={[transitStyles.modeChipSub, isActive && { color: '#43B0AB' }]}>
+                          {Math.round(route.duration_minutes)}분 · {
+                            route.distance_meters >= 1000
+                              ? `${(route.distance_meters / 1000).toFixed(1)}km`
+                              : `${route.distance_meters}m`
+                          }
+                        </Text>
+                      ) : (
+                        <Text style={[transitStyles.modeChipSub, { color: '#bbb' }]}>탭해서 조회</Text>
+                      )}
+                    </>
+                  )}
+                </TouchableOpacity>
+                {/* 대중교통 칩 아래에 SubPathRow 상세 표시 */}
+                {isTransitWithData && (
+                  <View style={transitStyles.transitChipDetail}>
+                    {route.transit_sub_paths.map((sub, i) => (
+                      <SubPathRow key={i} sub={sub} isLast={i === route.transit_sub_paths.length - 1} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
-      </View>
-      {/* 구간 리스트 */}
-      {transit_sub_paths.map((sub, i) => (
-        <SubPathRow key={i} sub={sub} isLast={i === transit_sub_paths.length - 1} />
-      ))}
+      )}
     </View>
   );
 };
@@ -198,6 +281,27 @@ const RouteResultScreen = () => {
   const routeSegments = apiData?.route_segments || [];
 
 
+  // 사용자가 선택한 transports 중 첫 번째를 기본 모드로 사용
+  // transit이 포함되어 있으면 transit 우선 (상세 정보 표시를 위해)
+  const _selectedKeys = (originalRequest?.transports ?? [])
+    .map(t => TRANSPORT_TO_KEY[t]).filter(Boolean);
+  const _defaultModeKey = _selectedKeys.includes('transit') ? 'transit'
+    : (_selectedKeys[0] ?? 'walk');
+
+  const [segmentModes, setSegmentModes] = useState(() => {
+    const modes = {};
+    routeSegments.forEach(seg => {
+      const avail = Object.keys(seg.routes || {}).filter(k => seg.routes[k] != null);
+      modes[seg.from_name] = avail.includes(_defaultModeKey) ? _defaultModeKey : (avail[0] ?? null);
+    });
+    return modes;
+  });
+  const [activeModePickerSegment, setActiveModePickerSegment] = useState(null);
+  // 온디맨드로 조회한 추가 경로 캐시: { "from_name:mode_key": RouteDetail | null }
+  const [extraRoutes, setExtraRoutes] = useState({});
+  // 현재 조회 중인 수단: { "from_name:mode_key": true }
+  const [loadingSegments, setLoadingSegments] = useState({});
+
   const [selectedDay, setSelectedDay] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSaveModalVisible, setSaveModalVisible] = useState(false);
@@ -208,6 +312,7 @@ const RouteResultScreen = () => {
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [saveTitle, setSaveTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isNoRouteModalVisible, setNoRouteModalVisible] = useState(false);
 
   // 리뷰 연동 상태
   const [viewMode, setViewMode] = useState('route'); // 'route' | 'place_reviews'
@@ -395,6 +500,47 @@ const RouteResultScreen = () => {
     return `자동차 약 ${driveMin}분 이동`;
   };
 
+  // 초기 segment.routes + 온디맨드로 조회한 extraRoutes 합산
+  const getMergedRoutes = (fromName, originalRoutes) => {
+    const extras = {};
+    ALL_MODE_KEYS.forEach(key => {
+      const cacheKey = `${fromName}:${key}`;
+      if (cacheKey in extraRoutes) extras[key] = extraRoutes[cacheKey];
+    });
+    return { ...originalRoutes, ...extras };
+  };
+
+  // 수단 칩 선택: 즉시 화면 전환 + 데이터 없으면 API 호출
+  const handleModeSelect = async (fromName, toName, modeKey) => {
+    setSegmentModes(prev => ({ ...prev, [fromName]: modeKey }));
+    setActiveModePickerSegment(null);
+
+    const cacheKey = `${fromName}:${modeKey}`;
+    // 이미 원본 데이터 또는 캐시에 있으면 스킵
+    const origSeg = routeSegments.find(s => s.from_name === fromName);
+    if (origSeg?.routes?.[modeKey] != null || cacheKey in extraRoutes) return;
+
+    setLoadingSegments(prev => ({ ...prev, [cacheKey]: true }));
+    try {
+      const allPlaces = Object.values(daysData).flat();
+      const origin = allPlaces.find(p => p.name === fromName);
+      const dest   = allPlaces.find(p => p.name === toName);
+      if (!origin || !dest) throw new Error('장소 좌표 없음');
+
+      const result = await fetchSegmentRoute({
+        origin_lat: origin.lat, origin_lng: origin.lng,
+        dest_lat:   dest.lat,   dest_lng:   dest.lng,
+        transport:  KEY_TO_TRANSPORT[modeKey],
+      });
+      setExtraRoutes(prev => ({ ...prev, [cacheKey]: result.route }));
+    } catch (e) {
+      console.warn(`[구간 경로] ${fromName}→${toName} ${modeKey} 조회 실패:`, e.message);
+      setExtraRoutes(prev => ({ ...prev, [cacheKey]: null }));
+    } finally {
+      setLoadingSegments(prev => { const n = { ...prev }; delete n[cacheKey]; return n; });
+    }
+  };
+
   const handleDeletePlace = (id) => {
     setDaysData(prev => {
       const currentPlaces = prev[selectedDay];
@@ -491,12 +637,17 @@ const RouteResultScreen = () => {
       return;
     }
 
+    const allCurrentPlaces = Object.values(daysData).flat();
+    if (allCurrentPlaces.length === 0) {
+      setNoRouteModalVisible(true);
+      return;
+    }
+
     setIsModifying(true);
     try {
       const { requestNewRoute } = require('../api/routeApi');
 
       // 현재 화면의 장소 목록 (삭제 반영된 상태)을 전달
-      const allCurrentPlaces = Object.values(daysData).flat();
       const placesForApi = allCurrentPlaces.map(p => ({
         name: p.name,
         lat: p.lat ?? 0,
@@ -620,47 +771,41 @@ const RouteResultScreen = () => {
   const activePlaces = daysData[selectedDay] || [];
   const activeNames = new Set(activePlaces.map(p => p.name));
 
-  // ── 구간별 색상 폴리라인 목록 계산 ──────────────────────────────────────────
-  // 각 구간을 { coords, color, isDash, width } 으로 분리하여
-  // 지도에서 구간수만큼 Polyline 컴포넌트를 개별 렌더링함
+  // ── 구간별 색상 폴리라인 목록 계산 (segmentModes + extraRoutes 반영) ──────────
   const coloredPolylines = routeSegments.flatMap(seg => {
     if (!activeNames.has(seg.from_name) || !activeNames.has(seg.to_name)) return [];
 
-    const transitRoute = seg.routes?.transit;
-    if (transitRoute?.transit_sub_paths?.length > 0) {
-      // 대중교통: subPath별 분리 색상 (getSubPathColor로 카드와 통일)
-      const pls = transitRoute.transit_sub_paths
-        .filter(sub => {
-          const ok = sub.polyline?.length >= 2;
-          // 디버깅: 도보 구간 좌표 확인
-          if (sub.trafficType === 3) {
-            console.log(`[폴리라인] 도보 구간 coords=${JSON.stringify(sub.polyline)}, 표시=${ok}`);
-          }
-          return ok;
-        })
+    const merged  = getMergedRoutes(seg.from_name, seg.routes ?? {});
+    const modeKey = segmentModes[seg.from_name]
+      ?? ALL_MODE_KEYS.find(k => merged[k] != null);
+    if (!modeKey) return [];
+
+    const route = merged[modeKey];
+    if (!route) return [];
+
+    // 대중교통: subPath별 분리 색상
+    if (modeKey === 'transit' && route.transit_sub_paths?.length > 0) {
+      return route.transit_sub_paths
+        .filter(sub => sub.polyline?.length >= 2)
         .map(sub => ({
           coords: sub.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
-          color: getSubPathColor(sub.trafficType, sub.lane),
-          isDash: sub.trafficType === 3, // 도보 = 점선
-          width: sub.trafficType === 3 ? 4 : 5, // Android에서 dash 표시를 위해 4 이상
+          color:  getSubPathColor(sub.trafficType, sub.lane),
+          isDash: sub.trafficType === 3,
+          width:  sub.trafficType === 3 ? 4 : 5,
         }));
-      console.log(`[폴리라인] ${seg.from_name}→${seg.to_name} 대중교통 구간 수: ${pls.length}`);
-      return pls;
     }
 
-    // 도보/자동차/자전거: 단색 방식 (기존 호환)
-    const mode = seg.routes ? Object.keys(seg.routes)[0] : null;
-    const route = mode ? seg.routes[mode] : null;
-    if (!route?.polyline?.length) return [];
-    const modeColor = mode === 'walk' ? '#888888'
-      : mode === 'drive' ? '#E07B39'
-        : mode === 'bicycle' ? '#5BB025'
-          : '#43B0AB';
+    // 도보/자동차/자전거: 단색
+    if (!route.polyline?.length) return [];
+    const modeColor = modeKey === 'walk'    ? '#888888'
+                    : modeKey === 'drive'   ? '#E07B39'
+                    : modeKey === 'bicycle' ? '#5BB025'
+                    : '#43B0AB';
     return [{
       coords: route.polyline.map(c => ({ latitude: c[0], longitude: c[1] })),
-      color: modeColor,
-      isDash: mode === 'walk',
-      width: 4,
+      color:  modeColor,
+      isDash: modeKey === 'walk',
+      width:  4,
     }];
   });
 
@@ -750,15 +895,19 @@ const RouteResultScreen = () => {
               />
             ))}
             {/* 구간별 색상 폴리라인: 대중교통=호선색, 도보=회색점선, 자동차=주황 */}
-            {coloredPolylines.map((pl, i) => (
-              <Polyline
-                key={`pl-${i}`}
-                coordinates={pl.coords}
-                strokeColor={pl.color}
-                strokeWidth={pl.width}
-                lineDashPattern={pl.isDash ? [6, 4] : undefined}
-              />
-            ))}
+            {coloredPolylines.map((pl, i) => {
+              const startCoord = pl.coords?.[0];
+              const stableKey = `pl-${pl.color}-${pl.isDash ? 1 : 0}-${startCoord?.latitude?.toFixed(5)}-${startCoord?.longitude?.toFixed(5)}`;
+              return (
+                <Polyline
+                  key={stableKey}
+                  coordinates={pl.coords}
+                  strokeColor={pl.color}
+                  strokeWidth={pl.width}
+                  lineDashPattern={pl.isDash ? [6, 4] : undefined}
+                />
+              );
+            })}
           </MapView>
         ) : (
           <View style={{ flex: 1, backgroundColor: '#EAF3FA', alignItems: 'center', justifyContent: 'center' }}>
@@ -909,12 +1058,29 @@ const RouteResultScreen = () => {
                         </TouchableOpacity>
                       </TouchableOpacity>
 
-                      {/* 이동 수단 정보 — 대중교통 포함 상세 표시 */}
-                      {place.transportSegment && (
-                        <View style={styles.transportRow}>
-                          <TransitDetailCard segment={place.transportSegment} />
-                        </View>
-                      )}
+                      {/* 이동 수단 정보 — 터치하면 4가지 수단 선택 가능 */}
+                      {place.transportSegment && (() => {
+                        const fromName = place.transportSegment.from_name;
+                        const toName   = place.transportSegment.to_name;
+                        const merged   = getMergedRoutes(fromName, place.transportSegment.routes ?? {});
+                        const loadingSet = new Set(
+                          ALL_MODE_KEYS.filter(k => loadingSegments[`${fromName}:${k}`])
+                        );
+                        return (
+                          <View style={styles.transportRow}>
+                            <SegmentModeDisplay
+                              routes={merged}
+                              currentModeKey={segmentModes[fromName]}
+                              isPickerOpen={activeModePickerSegment === fromName}
+                              onTogglePicker={() => setActiveModePickerSegment(prev =>
+                                prev === fromName ? null : fromName
+                              )}
+                              onSelectMode={(key) => handleModeSelect(fromName, toName, key)}
+                              loadingModes={loadingSet}
+                            />
+                          </View>
+                        );
+                      })()}
                     </View>
                   ))}
                 </View>
@@ -1029,6 +1195,33 @@ const RouteResultScreen = () => {
         onClose={() => setFolderCreateVisible(false)}
         onSubmit={handleCreateFolder}
       />
+
+      {/* 경로 없음 안내 팝업 */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isNoRouteModalVisible}
+        onRequestClose={() => setNoRouteModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNoRouteModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.saveModalBox}>
+            <Text style={styles.noRouteModalTitle}>경로 없음</Text>
+            <Text style={styles.noRouteModalMessage}>
+              수정할 경로가 없습니다.{'\n'}장소를 먼저 추가하거나 새로운 경로를 추천받아주세요.
+            </Text>
+            <TouchableOpacity
+              style={styles.noRouteModalBtn}
+              onPress={() => setNoRouteModalVisible(false)}
+            >
+              <Text style={styles.noRouteModalBtnText}>확인</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1091,7 +1284,10 @@ const styles = StyleSheet.create({
   saveConfirmBtnRow: { alignItems: 'flex-end' },
   saveConfirmBtn: { backgroundColor: '#A9E2D9', borderRadius: 10, padding: 15 },
   saveConfirmBtnText: { fontWeight: 'bold' },
-
+  noRouteModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111', marginBottom: 12, textAlign: 'center' },
+  noRouteModalMessage: { fontSize: 14, color: '#555', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  noRouteModalBtn: { backgroundColor: '#A9E2D9', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  noRouteModalBtnText: { fontSize: 15, fontWeight: 'bold', color: '#111' },
   reviewModeContainer: { flex: 1, backgroundColor: '#FFFFFF' },
   reviewModeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#EEE' },
   reviewModeBackBtn: { padding: 10 },
@@ -1114,7 +1310,7 @@ const styles = StyleSheet.create({
   placeRatingText: { fontSize: 14, fontWeight: 'bold', color: '#43B0AB' },
   reviewCountText: { fontSize: 13, color: '#43B0AB', fontWeight: 'normal', textDecorationLine: 'underline' },
   summaryRow: { backgroundColor: '#F8F9FA', padding: 8, borderRadius: 8, marginTop: 4, borderLeftWidth: 3, borderLeftColor: '#43B0AB', marginLeft: 30 },
-  placeSummaryText: { fontSize: 13, color: '#555', fontStyle: 'italic' }
+  placeSummaryText: { fontSize: 13, color: '#555', fontStyle: 'italic' },
 });
 
 // ── 대중교통 상세 카드 전용 스타일 ────────────────────────────────────────
@@ -1204,12 +1400,60 @@ const transitStyles = StyleSheet.create({
   },
   // 대중교통 없을 때 단순 표시
   simpleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 4,
   },
   simpleText: {
     fontSize: 13,
     color: '#59B5AB',
     fontWeight: '600',
+  },
+  // 수단 선택 칩 영역
+  modePicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: '#F0FAF9',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#C9ECE6',
+  },
+  modeChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+  },
+  modeChipActive: {
+    borderColor: '#43B0AB',
+    backgroundColor: '#E0F7F5',
+  },
+  modeChipText: {
+    fontSize: 13,
+    color: '#555',
+    fontWeight: '600',
+  },
+  modeChipSub: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
+  },
+  modeChipTextActive: {
+    color: '#43B0AB',
+    fontWeight: 'bold',
+  },
+  // 피커 안 transit 칩 아래 SubPathRow 영역
+  transitChipDetail: {
+    marginTop: 6,
+    paddingLeft: 4,
+    borderLeftWidth: 2,
+    borderLeftColor: '#C9ECE6',
   },
 });
 
