@@ -66,7 +66,24 @@ export const RouteProvider = ({ children }) => {
       ]);
       
       if (serverFolders && serverFolders.length > 0) {
-        setFolders(serverFolders);
+        // 이름 중복 제거 (기존 DB 꼬임 방지)
+        const uniqueFolders = [];
+        const nameSet = new Set();
+        serverFolders.forEach(folder => {
+          if (!nameSet.has(folder.name)) {
+            uniqueFolders.push(folder);
+            nameSet.add(folder.name);
+          }
+        });
+
+        const sortedFolders = uniqueFolders.sort((a, b) => {
+          if (a.name === '국내') return -1;
+          if (b.name === '국내') return 1;
+          if (a.name === '해외') return -1;
+          if (b.name === '해외') return 1;
+          return 0;
+        });
+        setFolders(sortedFolders);
       }
 
       if (serverRoutes && serverRoutes.length > 0) {
@@ -183,12 +200,12 @@ export const RouteProvider = ({ children }) => {
   };
 
   const addReview = (review) => {
-    // API 응답(review_pk)을 프론트엔드 상태 규격(id)으로 변환
+    // API 응답(review_pk/itinerary_id) 또는 직접 전달(id/routeId) 둘 다 지원
     const formatted = {
-      id: review.review_pk,
-      routeId: review.itinerary_id,
+      id: review.review_pk || review.id,
+      routeId: review.itinerary_id || review.routeId,
       title: review.title,
-      content: review.preview_comment || '내용이 없습니다.',
+      content: review.preview_comment || review.content || '내용이 없습니다.',
       thumbnail: review.thumbnail
     };
     setReviews(prev => [formatted, ...prev]);

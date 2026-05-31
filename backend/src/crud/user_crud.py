@@ -36,3 +36,7 @@ def update_user(user: Users, user_data: dict, session: Session):
     session.commit()
     session.refresh(user)
     return user
+def delete_user(user: Users, session: Session):
+    session.delete(user)
+    session.commit()
+    return True

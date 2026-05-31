@@ -267,11 +267,19 @@ const SavedRouteDetailScreen = () => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
+        if (isSaveModalVisible || isFolderCreateVisible) return;
         const kbHeight = e.endCoordinates.height;
         heightBeforeKeyboard.current = lastHeight.current;
-        lastHeight.current = MAX_HEIGHT;
+        
+        // 지도를 일정 부분 가리지 않도록 상단 여백 확보 (대략 120px)
+        const safeHeight = SCREEN_HEIGHT - kbHeight - 120;
+        // 기존 높이가 safeHeight보다 크면 줄여서 키보드+모달이 화면을 꽉 채우지 않게 함
+        const targetHeight = Math.min(heightBeforeKeyboard.current, safeHeight);
+        
+        lastHeight.current = targetHeight;
+        
         Animated.parallel([
-          Animated.timing(animatedHeight, { toValue: MAX_HEIGHT, duration: 250, useNativeDriver: false }),
+          Animated.timing(animatedHeight, { toValue: targetHeight, duration: 250, useNativeDriver: false }),
           Animated.timing(animatedBottom, { toValue: kbHeight, duration: 250, useNativeDriver: false }),
         ]).start();
       }
@@ -279,6 +287,7 @@ const SavedRouteDetailScreen = () => {
     const hideSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
+        if (isSaveModalVisible || isFolderCreateVisible) return;
         const restoreHeight = heightBeforeKeyboard.current;
         lastHeight.current = restoreHeight;
         Animated.parallel([
@@ -288,7 +297,7 @@ const SavedRouteDetailScreen = () => {
       }
     );
     return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
+  }, [isSaveModalVisible, isFolderCreateVisible]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -431,11 +440,30 @@ const SavedRouteDetailScreen = () => {
     }
   };
 
+  const activePlaces = daysData[selectedDay] || [];
+
+  // 지도 자동 영역 맞춤 (모달 상단 공간에 전체 경로 표시)
+  useEffect(() => {
+    if (mapRef.current && isMapAvailable && activePlaces.length > 0) {
+      const coords = activePlaces.map(p => ({ latitude: p.lat, longitude: p.lng }));
+      
+      // 모달이 바닥에서 MID_HEIGHT (약 55%) 정도를 차지하므로, 바텀 패딩을 모달 높이 + 여유공간으로 줍니다.
+      const bottomPadding = SCREEN_HEIGHT * 0.55 + 20; 
+      
+      setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.fitToCoordinates(coords, {
+            edgePadding: { top: 100, right: 60, bottom: bottomPadding, left: 60 },
+            animated: true,
+          });
+        }
+      }, 500);
+    }
+  }, [activePlaces, selectedDay]);
+
   if (loading) {
     return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#43B0AB" /></View>;
   }
-
-  const activePlaces = daysData[selectedDay] || [];
   const activeNames = new Set(activePlaces.map(p => p.name));
   const routeSegments = apiData?.route_segments || [];
   const coloredPolylines = routeSegments.flatMap(seg => {

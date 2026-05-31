@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -264,7 +265,14 @@ const ReviewWriteScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView 
+        style={styles.scrollArea} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 80 : 20}
+        enableResetScrollToCoords={false}
+      >
         {/* 제목 입력 */}
         <View style={styles.mainTitleContainer}>
           <Text style={styles.titlePrefix}>Title <Text style={styles.titleDivider}>|</Text></Text>
@@ -371,7 +379,7 @@ const ReviewWriteScreen = () => {
         </View>
 
         <View style={{ height: 120 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ReviewSaveModal
         visible={isSaveModalVisible}

@@ -24,6 +24,8 @@ import MoneyIcon from '../components/icons/moneyIcon';
 import ListIcon from '../components/icons/listIcon';
 import SendIcon from '../components/icons/sendIcon';
 import CategorySelectIcon from '../components/icons/categoryselectIcon';
+import ReloadIcon from '../components/icons/reloadIcon';
+import SearchIcon from '../components/icons/searchIcon';
 
 const RecommendInputScreen = () => {
   const router = useRouter();
@@ -32,6 +34,10 @@ const RecommendInputScreen = () => {
   // 0. 여행지 상태 관리
   const [destination, setDestination] = useState(initialDestination || '');
   const [isDestinationError, setIsDestinationError] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const CITIES = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '제주', '경주', '전주', '여수', '강릉', '속초', '춘천', '수원', '포항', '통영', '거제', '안동', '목포', '순천', '군산', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '평창', '가평', '남해', '보령', '태안', '담양', '하동'];
+  const filteredCities = destination.trim() === '' ? [] : CITIES.filter(city => city.includes(destination.trim()));
 
   React.useEffect(() => {
     if (initialDestination) {
@@ -392,6 +398,35 @@ const RecommendInputScreen = () => {
     setModalVisible(false);
   };
 
+  const handleReset = () => {
+    Alert.alert(
+      '새로고침',
+      '모든 내용을 지우시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '예',
+          onPress: () => {
+            setDestination('');
+            setIsDestinationError(false);
+            setStartDate('');
+            setEndDate('');
+            setNights('');
+            setDays('');
+            setIsDurationError(false);
+            setPersonCount(1);
+            setSelectedBudget('');
+            setSelectedTags(['힐링', '도보']);
+            setIsTagError(false);
+            setUserMessage('');
+            setShowSuggestions(false);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
 
@@ -400,7 +435,9 @@ const RecommendInputScreen = () => {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>여행 경로 추천받기</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={handleReset} style={{ padding: 4 }}>
+          <ReloadIcon width={23} height={23} />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAwareScrollView
@@ -427,9 +464,31 @@ const RecommendInputScreen = () => {
                 onChangeText={(text) => {
                   setDestination(text);
                   setIsDestinationError(false); // 아무 자판이나 치면 즉시 알림 해제
+                  setShowSuggestions(true);
                 }}
+                onFocus={() => setShowSuggestions(true)}
               />
             </View>
+
+            {/* 자동완성 드롭다운 */}
+            {showSuggestions && filteredCities.length > 0 && (
+              <ScrollView style={styles.suggestionsWrapper} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+                {filteredCities.map((city, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.suggestionItem}
+                    onPress={() => {
+                      setDestination(city);
+                      setShowSuggestions(false);
+                    }}
+                  >
+                    <SearchIcon width={14} height={14} style={{ marginRight: 8, opacity: 0.5 }} />
+                    <Text style={styles.suggestionText}>{city}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
             {/* 하단 경고 문구 표시 */}
             {isDestinationError && (
               <Text style={styles.errorText}>* 여행지를 입력해주세요.</Text>
@@ -543,7 +602,7 @@ const RecommendInputScreen = () => {
               <CategorySelectIcon width={20} height={20} />
               <Text style={styles.labelWithIcon}>여행 테마</Text>
             </View>
-            <View style={[styles.tagSectionWrapper, isTagError && styles.errorBorder]}>
+            <View style={[styles.tagSectionWrapperNoBorder, isTagError && styles.errorBorder]}>
               <View style={styles.tagRow}>
                 {selectedTags.map((tag, index) => (
                   <View key={index} style={styles.tag}>
@@ -731,6 +790,28 @@ const styles = StyleSheet.create({
   counterDivider: { width: 1, height: '100%', backgroundColor: '#E0E0E0' },
   textAreaWrapper: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, backgroundColor: '#FFFFFF', minHeight: 120 },
   tagSectionWrapper: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, backgroundColor: '#FFFFFF' },
+  tagSectionWrapperNoBorder: { paddingVertical: 12 },
+  suggestionsWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CDE5DE',
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 8,
+    maxHeight: 180,
+    zIndex: 1000,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  suggestionText: {
+    fontSize: 15,
+    color: '#333',
+  },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap' },
   tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4CCD8', borderRadius: 16, paddingVertical: 6, paddingLeft: 12, paddingRight: 6, marginRight: 6, marginBottom: 6 },
   tagText: { fontSize: 13, color: '#333' },
