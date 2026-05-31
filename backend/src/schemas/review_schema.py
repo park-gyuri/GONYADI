@@ -51,3 +51,20 @@ class ReviewDetailResponse(BaseModel):
     recommendation_data: Optional[Dict[str, Any]] = None
     region: Optional[str] = None
     days: Optional[int] = None
+
+class PlaceReviewItem(BaseModel):
+    review_pk: int
+    author: str
+    author_profile_image: Optional[str] = None
+    rating: int
+    comment: Optional[str] = None
+    photos: List[str] = []
+    created_at: datetime
+
+class PlaceStats(BaseModel):
+    average_rating: float
+    review_count: int
+    summary: Optional[str] = None
+
+class PlacesStatsRequest(BaseModel):
+    place_ids: List[str]
