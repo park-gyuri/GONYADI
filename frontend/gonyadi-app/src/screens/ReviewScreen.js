@@ -11,6 +11,26 @@ import { fetchReviews } from '../api/reviewApi';
 import { BASE_URL, getFullImageUrl } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
 
+const ReviewAvatar = ({ uri, authorName }) => {
+  const [error, setError] = useState(false);
+  
+  if (!uri || error) {
+    return (
+      <View style={styles.userAvatarPlaceholder}>
+        <Text style={styles.userAvatarText}>{authorName?.substring(0, 1) || '유'}</Text>
+      </View>
+    );
+  }
+  
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.userAvatar}
+      onError={() => setError(true)}
+    />
+  );
+};
+
 const ReviewScreen = () => {
   const router = useRouter();
   const { likedReviews, toggleLikedReview } = useRoutes();
@@ -200,17 +220,11 @@ const ReviewScreen = () => {
 
               <View style={styles.cardInfoRow}>
                 <View style={styles.userInfo}>
-                  {/* 프로필 이미지 서버 데이터 연동 */}
-                  {review.author_profile_image ? (
-                    <Image
-                      source={{ uri: getFullImageUrl(review.author_profile_image) }}
-                      style={styles.userAvatar}
-                    />
-                  ) : (
-                    <View style={styles.userAvatarPlaceholder}>
-                      <Text style={styles.userAvatarText}>{review.author?.substring(0, 1) || '유'}</Text>
-                    </View>
-                  )}
+                  {/* 프로필 이미지 서버 데이터 연동 (에러 처리 포함) */}
+                  <ReviewAvatar 
+                    uri={review.author_profile_image ? getFullImageUrl(review.author_profile_image) : null} 
+                    authorName={review.author} 
+                  />
                   <View>
                     <Text style={styles.userName}>{review.author || '익명 사용자'}</Text>
                     <Text style={styles.postDate}>{review.created_at ? review.created_at.substring(0, 10).replace(/-/g, '년 ').replace('년 ', '년 ').replace(' ', '') + '일' : '2025년 8월 12일'}</Text>
