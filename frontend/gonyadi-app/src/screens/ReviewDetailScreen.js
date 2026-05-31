@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Alert, Dimensions, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Alert, Dimensions, FlatList, Share, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MarkerIcon from '../components/icons/markerIcon';
@@ -10,6 +10,8 @@ import { useRoutes } from '../context/RouteContext';
 import { fetchReviewById, deleteReview as deleteReviewApi } from '../api/reviewApi';
 import { getFullImageUrl } from '../api/apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import FolderCreateModal from '../components/FolderCreateModal';
+import { saveItinerary } from '../api/routeApi';
 
 import { mockRouteResultBusan, mockRouteResultDaegu, mockRouteResultDaejeon, mockRouteResultMungyeong, mockRouteResultOsaka, mockRouteResultSapporo, mockRouteResultJeju, mockRouteResultPhuQuoc } from '../data/dummyData';
 
@@ -32,7 +34,110 @@ const ReviewDetailScreen = () => {
   const [isMyReview, setIsMyReview] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [rawReviewData, setRawReviewData] = useState(null);
-  const { reviews, allRoutes, deleteReviewFromContext } = useRoutes();
+  const { reviews, allRoutes, deleteReviewFromContext, folders, addFolder, setAllRoutes } = useRoutes();
+
+  const [isSaveModalVisible, setSaveModalVisible] = useState(false);
+  const [isFolderCreateVisible, setFolderCreateVisible] = useState(false);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isSaveModalVisible) {
+      setSaveTitle('');
+      if (folders.length > 0 && !selectedFolderId) {
+        setSelectedFolderId(folders[0].folder_pk);
+      }
+    }
+  }, [isSaveModalVisible]);
+
+  const handleShare = async () => {
+    if (!routeData) return;
+    const title = routeData.reviewSection?.mainTitle || '여행 경로';
+    let lines = [`🗺️ ${title}`, ''];
+    if (routeData.schedule && routeData.schedule.length > 0) {
+      routeData.schedule.forEach(dayInfo => {
+        lines.push(`[ ${dayInfo.day}일차 ]`);
+        dayInfo.places.forEach((p, idx) => {
+          lines.push(`  ${idx + 1}. ${p.name || p.placeName}`);
+        });
+        lines.push('');
+      });
+    } else if (routeData.reviewSection?.allReviews) {
+      routeData.reviewSection.allReviews.forEach((r, idx) => {
+        lines.push(`  ${idx + 1}. ${r.placeName || r.placeId}`);
+      });
+    }
+    lines.push('GONYADI 앱으로 공유된 여행 경로입니다.');
+
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch (e) {
+      Alert.alert('공유 실패', e.message);
+    }
+  };
+
+  const handleCreateFolder = (folderName) => {
+    addFolder(folderName);
+    Alert.alert('안내', '새 폴더가 생성되었습니다.');
+  };
+
+  const handleSaveItinerary = async () => {
+    if (!saveTitle.trim()) {
+      Alert.alert('안내', '제목을 입력해주세요.');
+      return;
+    }
+    if (!rawReviewData || !rawReviewData.recommendation_data) {
+      Alert.alert('에러', '저장할 수 있는 원본 경로 데이터가 없습니다.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const folder = folders.find(f => f.folder_pk === selectedFolderId);
+      const folderName = folder ? folder.name : '국내';
+
+      const itineraryData = {
+        folder_id: selectedFolderId,
+        title: saveTitle,
+        region: rawReviewData.region || '알 수 없음',
+        nights: null,
+        days: rawReviewData.days || 1,
+        number_of_people: 2,
+        budget_per_person: null,
+        start_date: null,
+        end_date: null,
+        recommendation_data: rawReviewData.recommendation_data,
+      };
+
+      const result = await saveItinerary(itineraryData);
+
+      const newSavedRoute = {
+        id: result.itinerary_pk || Date.now(),
+        category: folderName,
+        title: result.title,
+        location: result.region,
+        date: new Date().toISOString().split('T')[0],
+        days: result.days,
+        isFavorite: false,
+        recommendation_data: result.recommendation_data,
+      };
+
+      setAllRoutes(prev => [...prev, newSavedRoute]);
+
+      Alert.alert('저장 완료', '경로가 성공적으로 저장되었습니다!', [
+        { text: '확인', onPress: () => {
+            setSaveModalVisible(false);
+            router.push('/route');
+        }}
+      ]);
+    } catch (error) {
+      console.error('[저장 실패]', error);
+      Alert.alert('에러', '경로 저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleBack = () => {
     if (from) {
@@ -380,6 +485,19 @@ const ReviewDetailScreen = () => {
             )}
           </View>
         </View>
+
+        {/* 🔴 액션 버튼 추가 (스크롤 뷰 내부 하단) */}
+        <View style={styles.bottomFixedArea}>
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+              <Text style={styles.actionBtnText}>공유하기</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => setSaveModalVisible(true)}>
+              <Text style={styles.actionBtnText}>저장하기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -430,6 +548,71 @@ const ReviewDetailScreen = () => {
           )}
         </View>
       </Modal>
+
+      {/* 🔴 경로 저장 모달 추가 */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isSaveModalVisible && !isFolderCreateVisible}
+        onRequestClose={() => setSaveModalVisible(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSaveModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.saveModalBox}>
+            <View style={styles.saveModalHeader}>
+              <TouchableOpacity onPress={() => setSaveModalVisible(false)} style={styles.modalBackBtn}>
+                <Text style={styles.modalBackIcon}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.saveModalTitle}>경로를 저장하시겠습니까?</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <Text style={styles.saveSectionTitle}>저장할 폴더 선택하세요</Text>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.folderTagsRow}>
+              {folders.map(folder => (
+                <TouchableOpacity 
+                  key={folder.folder_pk} 
+                  style={[styles.folderTag, selectedFolderId === folder.folder_pk && { borderColor: '#43B0AB', backgroundColor: '#F0FAF9' }]}
+                  onPress={() => setSelectedFolderId(folder.folder_pk === selectedFolderId ? null : folder.folder_pk)}
+                >
+                  <Text style={[styles.folderTagText, selectedFolderId === folder.folder_pk && { color: '#43B0AB', fontWeight: 'bold' }]}>
+                    {folder.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={styles.folderTagPlus} onPress={() => setFolderCreateVisible(true)}>
+                <Text style={styles.folderTagPlusText}>+</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <Text style={styles.saveSectionTitle}>제목을 입력하세요</Text>
+            <TextInput 
+              style={styles.saveTitleInput} 
+              value={saveTitle}
+              onChangeText={setSaveTitle}
+              placeholder="예: 대구 1박2일 힐링 여행"
+            />
+            <View style={styles.saveConfirmBtnRow}>
+              <TouchableOpacity 
+                style={styles.saveConfirmBtn} 
+                onPress={handleSaveItinerary}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text style={styles.saveConfirmBtnText}>저장하기</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <FolderCreateModal 
+        visible={isFolderCreateVisible} 
+        onClose={() => setFolderCreateVisible(false)} 
+        onSubmit={handleCreateFolder}
+      />
     </SafeAreaView>
   );
 };
@@ -480,7 +663,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   routeTitle: { fontSize: 16, fontWeight: 'bold', color: '#111', textAlign: 'center' },
-  listContainer: { paddingHorizontal: 20 },
+  listContainer: { flex: 1, paddingHorizontal: 20 },
 
   dayTabRow: { flexDirection: 'row', marginBottom: 20 },
   dayTab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#DDD', marginRight: 10 },
@@ -528,6 +711,28 @@ const styles = StyleSheet.create({
   pageIndicator: { flexDirection: 'row', position: 'absolute', bottom: 60, alignSelf: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.4)', marginHorizontal: 4 },
   dotActive: { backgroundColor: '#FFFFFF' },
+
+  bottomFixedArea: { backgroundColor: '#F5F7FA', paddingHorizontal: 20, paddingBottom: 20, paddingTop: 10 },
+  actionButtonsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  actionBtn: { flex: 0.48, backgroundColor: '#A9E2D9', borderRadius: 15, paddingVertical: 18, alignItems: 'center' },
+  actionBtnText: { fontSize: 18, fontWeight: 'bold', color: '#000' },
+  saveBtn: { backgroundColor: '#59B5AB' },
+
+  saveModalBox: { width: '90%', backgroundColor: '#FFF', borderRadius: 20, padding: 25 },
+  saveModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 },
+  modalBackBtn: { padding: 5 },
+  modalBackIcon: { fontSize: 22 },
+  saveModalTitle: { fontSize: 16, fontWeight: 'bold' },
+  saveSectionTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 10 },
+  folderTagsRow: { flexDirection: 'row', marginBottom: 25 },
+  folderTag: { borderWidth: 1, borderColor: '#EEE', borderRadius: 10, padding: 10, marginRight: 10 },
+  folderTagText: { color: '#333' },
+  folderTagPlus: { borderWidth: 1, borderColor: '#EEE', borderRadius: 10, width: 40, alignItems: 'center', justifyContent: 'center' },
+  folderTagPlusText: { color: '#333', fontSize: 16 },
+  saveTitleInput: { backgroundColor: '#FEFEEB', borderRadius: 10, height: 50, paddingHorizontal: 15, marginBottom: 25, borderWidth: 1, borderColor: '#DCE5B6' },
+  saveConfirmBtnRow: { alignItems: 'flex-end' },
+  saveConfirmBtn: { backgroundColor: '#A9E2D9', borderRadius: 10, padding: 15 },
+  saveConfirmBtnText: { fontWeight: 'bold' },
 });
 
 export default ReviewDetailScreen;
