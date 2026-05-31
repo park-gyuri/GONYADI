@@ -5,7 +5,7 @@ import shutil
 import uuid
 from sqlmodel import Session
 from src.core.database import get_session
-from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview, ReviewUpdate
+from src.schemas.review_schema import ReviewCreate, ReviewListItem, ReviewDetailResponse, TopLikedReview, ReviewUpdate, PlaceReviewItem, PlaceStats, PlacesStatsRequest
 from src.crud import review_crud
 from src.core.security import get_current_user
 
@@ -60,6 +60,14 @@ def get_my_likes(
 ):
     liked_ids = review_crud.get_user_liked_review_ids(session=session, user_id=current_user.user_pk)
     return {"liked_review_ids": liked_ids}
+
+@router.get("/reviews/place/{place_id}", response_model=list[PlaceReviewItem])
+def get_place_reviews(place_id: str, session: Session = Depends(get_session)):
+    return review_crud.get_place_reviews(session=session, place_id=place_id)
+
+@router.post("/reviews/places-stats", response_model=dict[str, PlaceStats])
+def get_places_stats(req: PlacesStatsRequest, session: Session = Depends(get_session)):
+    return review_crud.get_places_stats(session=session, place_ids=req.place_ids)
 
 @router.get("/reviews/{review_id}", response_model=ReviewDetailResponse)
 def get_review(review_id: int, session: Session = Depends(get_session)):

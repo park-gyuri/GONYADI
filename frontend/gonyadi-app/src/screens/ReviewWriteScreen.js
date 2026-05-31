@@ -293,7 +293,7 @@ const ReviewWriteScreen = () => {
         <View style={styles.listContainer}>
           {currentDayPlaces.map((item, index) => {
             const isLast = index === currentDayPlaces.length - 1;
-            const placeId = item.id || `place_${item._gi ?? index}`;
+            const placeId = item.name || `place_${index}`;
             const currentRating = ratings[placeId] || 0;
             const placePhotos = photos[placeId] || [];
             const isThumbnailPlace = thumbnailPlaceId === placeId;
