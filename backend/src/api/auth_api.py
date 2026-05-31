@@ -195,9 +195,22 @@ def upload_profile_image(
     current_user = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
+    import time
     """현재 로그인한 유저의 프로필 사진을 업로드합니다."""
     extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
-    filename = f"user_{current_user.user_pk}{extension}"
+    
+    # 기존 프로필 이미지가 있으면 삭제
+    if current_user.user_profile_image:
+        old_filename = os.path.basename(current_user.user_profile_image)
+        old_file_path = os.path.join("static", "profile_images", old_filename)
+        if os.path.exists(old_file_path):
+            try:
+                os.remove(old_file_path)
+            except Exception as e:
+                print(f"[ERROR] 기존 프로필 사진 삭제 실패: {e}")
+
+    # 새 파일명 생성 (타임스탬프 추가로 캐시 무효화)
+    filename = f"user_{current_user.user_pk}_{int(time.time())}{extension}"
     file_path = os.path.join("static", "profile_images", filename)
     
     with open(file_path, "wb") as buffer:
