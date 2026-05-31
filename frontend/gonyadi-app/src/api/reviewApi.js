@@ -56,3 +56,14 @@ export const unlikeReview = async (reviewId) => {
 export const fetchMyLikedReviews = async () => {
   return await apiClient('/api/v1/reviews/my-likes', { method: 'GET' });
 };
+
+export const fetchPlaceReviews = async (placeId) => {
+  return await apiClient(`/api/v1/reviews/place/${placeId}`, { method: 'GET' });
+};
+
+export const fetchPlacesStats = async (placeIds) => {
+  return await apiClient('/api/v1/reviews/places-stats', {
+    method: 'POST',
+    body: JSON.stringify({ place_ids: placeIds }),
+  });
+};

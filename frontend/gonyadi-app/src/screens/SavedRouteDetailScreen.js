@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, Alert, ActivityIndicator, PanResponder, Keyboard, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Dimensions, Animated, Modal, Platform, Alert, ActivityIndicator, PanResponder, Keyboard, Share, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { getItineraryDetail, requestNewRoute, saveItinerary } from '../api/routeApi';
+import { fetchPlaceReviews, fetchPlacesStats } from '../api/reviewApi';
+import { getFullImageUrl } from '../api/apiClient';
 import { useRoutes } from '../context/RouteContext';
 
 // react-native-maps는 Expo Go에서 지원되지 않으므로 안전하게 불러오기
@@ -136,13 +138,13 @@ const SavedRouteDetailScreen = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { folders, allRoutes, addFolder, setAllRoutes } = useRoutes();
-  
+
   // 데이터 관련 상태
   const [itinerary, setItinerary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [apiData, setApiData] = useState(null);
   const [daysData, setDaysData] = useState({});
-  
+
   // UI 관련 상태
   const [selectedDay, setSelectedDay] = useState(1);
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
@@ -153,6 +155,13 @@ const SavedRouteDetailScreen = () => {
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [saveTitle, setSaveTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // 리뷰 연동 상태
+  const [viewMode, setViewMode] = useState('route'); // 'route' | 'place_reviews'
+  const [selectedPlaceForReviews, setSelectedPlaceForReviews] = useState(null);
+  const [placeReviewsData, setPlaceReviewsData] = useState([]);
+  const [placesStats, setPlacesStats] = useState({});
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false); // 로컬 UI 반영용 (선택사항)
 
   const mapRef = useRef(null);
@@ -176,7 +185,7 @@ const SavedRouteDetailScreen = () => {
         setLoading(true);
         // 🌟 백엔드 상세 조회 API 호출
         const data = await getItineraryDetail(id);
-        
+
         if (data) {
           setItinerary({
             title: data.title,
@@ -184,7 +193,7 @@ const SavedRouteDetailScreen = () => {
             days: data.days,
             folder_id: data.folder_id,
           });
-          
+
           // API 응답 데이터 (추천 결과 본체) 설정
           const apiResponse = data.recommendation_data || data;
           setApiData(apiResponse);
@@ -193,7 +202,7 @@ const SavedRouteDetailScreen = () => {
         }
       } catch (error) {
         console.error('[상세 조회 실패]', error);
-        
+
         // 🌟 서버 실패 시 Context에서 찾아보기 (오프라인 폴백)
         const localRoute = allRoutes.find(r => String(r.id) === String(id));
         if (localRoute) {
@@ -218,6 +227,17 @@ const SavedRouteDetailScreen = () => {
 
     if (id) fetchDetail();
   }, [id, allRoutes]);
+
+  // 장소별 리뷰 통계 불러오기
+  useEffect(() => {
+    const placesList = apiData?.places || [];
+    if (placesList.length > 0) {
+      const placeNames = placesList.map(p => p.name);
+      fetchPlacesStats(placeNames)
+        .then(res => setPlacesStats(res))
+        .catch(e => console.error('장소 통계 로딩 실패:', e));
+    }
+  }, [apiData]);
 
   // daysData 변환 로직
   const processDaysData = (data) => {
@@ -270,14 +290,14 @@ const SavedRouteDetailScreen = () => {
         if (isSaveModalVisible || isFolderCreateVisible) return;
         const kbHeight = e.endCoordinates.height;
         heightBeforeKeyboard.current = lastHeight.current;
-        
+
         // 지도를 일정 부분 가리지 않도록 상단 여백 확보 (대략 120px)
         const safeHeight = SCREEN_HEIGHT - kbHeight - 120;
         // 기존 높이가 safeHeight보다 크면 줄여서 키보드+모달이 화면을 꽉 채우지 않게 함
         const targetHeight = Math.min(heightBeforeKeyboard.current, safeHeight);
-        
+
         lastHeight.current = targetHeight;
-        
+
         Animated.parallel([
           Animated.timing(animatedHeight, { toValue: targetHeight, duration: 250, useNativeDriver: false }),
           Animated.timing(animatedBottom, { toValue: kbHeight, duration: 250, useNativeDriver: false }),
@@ -404,6 +424,40 @@ const SavedRouteDetailScreen = () => {
     }
   };
 
+  const handleViewPlaceReviews = async (place) => {
+    setViewMode('place_reviews');
+    setSelectedPlaceForReviews(place);
+    setIsLoadingReviews(true);
+    // 높이를 MAX_HEIGHT로 올려서 리뷰를 보기 편하게 만듦
+    Animated.timing(animatedHeight, {
+      toValue: MAX_HEIGHT,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+
+    try {
+      const res = await fetchPlaceReviews(place.name);
+      setPlaceReviewsData(res);
+    } catch (e) {
+      console.error(e);
+      setPlaceReviewsData([]);
+    } finally {
+      setIsLoadingReviews(false);
+    }
+  };
+
+  const handleBackToRoute = () => {
+    setViewMode('route');
+    setSelectedPlaceForReviews(null);
+    setPlaceReviewsData([]);
+    // 원래 높이로 복귀
+    Animated.timing(animatedHeight, {
+      toValue: MID_HEIGHT,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  };
+
   const handleCreateFolder = (name) => {
     addFolder(name);
     Alert.alert('알림', '폴더가 생성되었습니다.');
@@ -446,10 +500,10 @@ const SavedRouteDetailScreen = () => {
   useEffect(() => {
     if (mapRef.current && isMapAvailable && activePlaces.length > 0) {
       const coords = activePlaces.map(p => ({ latitude: p.lat, longitude: p.lng }));
-      
+
       // 모달이 바닥에서 MID_HEIGHT (약 55%) 정도를 차지하므로, 바텀 패딩을 모달 높이 + 여유공간으로 줍니다.
-      const bottomPadding = SCREEN_HEIGHT * 0.55 + 20; 
-      
+      const bottomPadding = SCREEN_HEIGHT * 0.55 + 20;
+
       setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.fitToCoordinates(coords, {
@@ -501,7 +555,7 @@ const SavedRouteDetailScreen = () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      
+
 
 
       <View style={styles.mapArea}>
@@ -539,73 +593,155 @@ const SavedRouteDetailScreen = () => {
 
       <Animated.View style={[styles.bottomSheet, { height: animatedHeight, bottom: animatedBottom }]}>
         <View {...panResponder.panHandlers} style={styles.handleWrapper}><View style={styles.dragHandle} /></View>
-        <View style={styles.dayTabRow}>
-          {Object.keys(daysData).sort((a, b) => a - b).map(day => (
-            <TouchableOpacity 
-              key={day} 
-              style={[styles.dayTab, selectedDay === parseInt(day, 10) && styles.dayTabActive]} 
-              onPress={() => setSelectedDay(parseInt(day, 10))}
-            >
-              <Text style={[styles.dayTabText, selectedDay === parseInt(day, 10) && styles.dayTabTextActive]}>{day}일차</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {viewMode === 'place_reviews' ? (
+          <View style={styles.reviewModeContainer}>
+            <View style={styles.reviewModeHeader}>
+              <TouchableOpacity onPress={handleBackToRoute} style={styles.reviewModeBackBtn}>
+                <Text style={styles.reviewModeBackIcon}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.reviewModeTitle}>{selectedPlaceForReviews?.name} 리뷰 모음</Text>
+              <View style={{ width: 40 }} />
+            </View>
 
-        <ScrollView ref={scrollViewRef} style={styles.routeList} showsVerticalScrollIndicator={false}>
-          <View style={styles.timelineContainer}>
-            <View style={styles.mainVerticalLine} />
-            <View style={{ flex: 1 }}>
-              {activePlaces.map((place, index) => (
-                <View key={place.id} style={styles.placeItemWrapper} ref={ref => { placeRefs.current[place.id] = ref; }}>
-                  <TouchableOpacity 
-                    style={[styles.placeCard, selectedPlaceId === place.id && styles.placeCardSelected]}
-                    onPress={() => {
-                      setSelectedPlaceId(place.id);
-                      mapRef.current?.animateToRegion({ latitude: place.lat - 0.004, longitude: place.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
-                    }}
-                  >
-                    <View style={styles.placeInfo}>
-                      <View style={styles.placeNameRow}>
-                        <MarkerIcon width={22} height={22} color={selectedPlaceId === place.id ? '#43B0AB' : '#111'} />
-                        <Text style={[styles.placeNameText, selectedPlaceId === place.id && { color: '#43B0AB' }]}>{place.name}</Text>
+            {isLoadingReviews ? (
+              <ActivityIndicator size="large" color="#43B0AB" style={{ marginTop: 50 }} />
+            ) : (
+              <ScrollView style={styles.reviewListScroll} showsVerticalScrollIndicator={false}>
+                {placeReviewsData.length > 0 ? (
+                  placeReviewsData.map(review => (
+                    <View key={review.review_pk} style={styles.placeReviewCard}>
+                      <View style={styles.reviewAuthorRow}>
+                        <View style={styles.authorProfileCircle}>
+                          {review.author_profile_image ? (
+                            <Image source={{ uri: getFullImageUrl(review.author_profile_image) }} style={{ width: '100%', height: '100%', borderRadius: 16 }} />
+                          ) : (
+                            <Text style={{ fontSize: 16, color: '#888' }}>👤</Text>
+                          )}
+                        </View>
+                        <View>
+                          <Text style={styles.reviewAuthorText}>{review.author}</Text>
+                          <Text style={styles.reviewDateText}>{new Date(review.created_at).toLocaleDateString()}</Text>
+                        </View>
                       </View>
-                      <Text style={styles.placeAddress}>{place.address}</Text>
-                      {place.accessibilityUnconfirmed && (
-                        <Text style={styles.accessibilityWarning}>⚠ 접근성 미확인</Text>
+                      <View style={styles.reviewStarsRow}>
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <Text key={star} style={{ color: star <= review.rating ? '#43B0AB' : '#E0E0E0', fontSize: 16 }}>★</Text>
+                        ))}
+                      </View>
+                      {review.comment && (
+                        <Text style={styles.reviewComment}>{review.comment}</Text>
                       )}
-                      {place.petUnconfirmed && (
-                        <Text style={styles.accessibilityWarning}>⚠ 반려동물 동반 가능 여부 미확인</Text>
+                      {review.photos && review.photos.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reviewPhotosRow}>
+                          {review.photos.map((uri, idx) => (
+                            <Image key={idx} source={{ uri: getFullImageUrl(uri) }} style={styles.reviewPhoto} />
+                          ))}
+                        </ScrollView>
                       )}
                     </View>
-                    <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}><WastebasketIcon width={20} height={20} color="#A9E2D9" /></TouchableOpacity>
-                  </TouchableOpacity>
-                  {place.transportSegment && (
-                    <View style={styles.transportRow}>
-                      <TransitDetailCard segment={place.transportSegment} />
-                    </View>
-                  )}
-                </View>
+                  ))
+                ) : (
+                  <View style={styles.emptyReviewBox}>
+                    <Text style={styles.emptyReviewText}>아직 {selectedPlaceForReviews?.name}에 대한 리뷰가 없습니다.</Text>
+                    <Text style={styles.emptyReviewSubText}>첫 번째로 리뷰를 남겨보세요!</Text>
+                  </View>
+                )}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            )}
+          </View>
+        ) : (
+          <>
+            <View style={styles.dayTabRow}>
+              {Object.keys(daysData).sort((a, b) => a - b).map(day => (
+                <TouchableOpacity
+                  key={day}
+                  style={[styles.dayTab, selectedDay === parseInt(day, 10) && styles.dayTabActive]}
+                  onPress={() => setSelectedDay(parseInt(day, 10))}
+                >
+                  <Text style={[styles.dayTabText, selectedDay === parseInt(day, 10) && styles.dayTabTextActive]}>{day}일차</Text>
+                </TouchableOpacity>
               ))}
             </View>
-          </View>
-          <View style={{ height: 20 }} />
-        </ScrollView>
 
-        <View style={styles.bottomFixedArea}>
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>수정사항을 입력하세요</Text>
-            <View style={styles.llmInputWrapper}>
-              <TextInput style={styles.llmInput} placeholder="조금 더 힐링 목적에 맞게 수정해줘" value={modifyText} onChangeText={setModifyText} editable={!isModifying} />
-              <TouchableOpacity style={styles.sendBtn} onPress={handleModifySubmit} disabled={isModifying}>
-                {isModifying ? <ActivityIndicator size="small" color="#59B5AB" /> : <SendIcon width={20} height={20} color="#666" />}
-              </TouchableOpacity>
+            <ScrollView ref={scrollViewRef} style={styles.routeList} showsVerticalScrollIndicator={false}>
+              <View style={styles.timelineContainer}>
+                <View style={styles.mainVerticalLine} />
+                <View style={{ flex: 1 }}>
+                  {activePlaces.map((place, index) => (
+                    <View key={place.id} style={styles.placeItemWrapper} ref={ref => { placeRefs.current[place.id] = ref; }}>
+                      <TouchableOpacity
+                        style={[styles.placeCard, selectedPlaceId === place.id && styles.placeCardSelected]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          setSelectedPlaceId(place.id);
+                          placeRefs.current[place.id]?.measureLayout(scrollViewRef.current, (x, y) => {
+                            scrollViewRef.current?.scrollTo({ y: y - 10, animated: true });
+                          });
+                          handleViewPlaceReviews(place);
+                        }}
+                      >
+                        <View style={styles.placeInfo}>
+                          <View style={styles.placeNameRow}>
+                            <MarkerIcon width={22} height={22} color={selectedPlaceId === place.id ? '#43B0AB' : '#111'} />
+                            <Text style={[styles.placeNameText, selectedPlaceId === place.id && { color: '#43B0AB' }]}>{place.name}</Text>
+                          </View>
+
+                          {/* 리뷰 시그널 미리 노출 (이름 바로 아래) */}
+                          <View style={styles.ratingRow}>
+                            <Text style={styles.placeRatingText}>
+                              ★{placesStats[place.name]?.average_rating.toFixed(1) || '0.0'} <Text style={styles.reviewCountText}>(리뷰 {placesStats[place.name]?.review_count || 0}개)</Text>
+                            </Text>
+                          </View>
+
+                          {/* 실제 주소 (이유 말고) */}
+                          {place.address && <Text style={styles.placeAddress}>{place.address}</Text>}
+
+                          {/* AI 한 줄 요약 */}
+                          {placesStats[place.name]?.summary && (
+                            <View style={styles.summaryRow}>
+                              <Text style={styles.placeSummaryText}>{placesStats[place.name].summary}</Text>
+                            </View>
+                          )}
+
+                          {place.accessibilityUnconfirmed && (
+                            <Text style={styles.accessibilityWarning}>⚠ 접근성 미확인</Text>
+                          )}
+                          {place.petUnconfirmed && (
+                            <Text style={styles.accessibilityWarning}>⚠ 반려동물 동반 가능 여부 미확인</Text>
+                          )}
+                        </View>
+                        <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeletePlace(place.id)}><WastebasketIcon width={20} height={20} color="#A9E2D9" /></TouchableOpacity>
+                      </TouchableOpacity>
+                      {place.transportSegment && (
+                        <View style={styles.transportRow}>
+                          <TransitDetailCard segment={place.transportSegment} />
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={{ height: 20 }} />
+            </ScrollView>
+
+            <View style={styles.bottomFixedArea}>
+              <View style={styles.inputSection}>
+                <Text style={styles.inputLabel}>수정사항을 입력하세요</Text>
+                <View style={styles.llmInputWrapper}>
+                  <TextInput style={styles.llmInput} placeholder="조금 더 힐링 목적에 맞게 수정해줘" value={modifyText} onChangeText={setModifyText} editable={!isModifying} />
+                  <TouchableOpacity style={styles.sendBtn} onPress={handleModifySubmit} disabled={isModifying}>
+                    {isModifying ? <ActivityIndicator size="small" color="#59B5AB" /> : <SendIcon width={20} height={20} color="#666" />}
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity style={styles.actionBtn} onPress={handleShare}><Text style={styles.actionBtnText}>공유하기</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={() => setSaveModalVisible(true)}><Text style={styles.actionBtnText}>저장하기</Text></TouchableOpacity>
+              </View>
             </View>
-          </View>
-          <View style={styles.actionButtonsRow}>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}><Text style={styles.actionBtnText}>공유하기</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={() => setSaveModalVisible(true)}><Text style={styles.actionBtnText}>저장하기</Text></TouchableOpacity>
-          </View>
-        </View>
+          </>
+        )}
       </Animated.View>
 
       <Modal animationType="fade" transparent={true} visible={isSaveModalVisible} onRequestClose={() => setSaveModalVisible(false)}>
@@ -709,7 +845,31 @@ const styles = StyleSheet.create({
   folderTagPlus: { padding: 10, borderWidth: 1, borderColor: '#EEE', borderRadius: 10, width: 40, alignItems: 'center' },
   saveTitleInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 10, padding: 10, marginBottom: 20 },
   saveConfirmBtn: { backgroundColor: '#A9E2D9', padding: 15, borderRadius: 10, alignItems: 'center' },
-  saveConfirmBtnText: { fontWeight: 'bold' }
+  saveConfirmBtnText: { fontWeight: 'bold' },
+
+  reviewModeContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  reviewModeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#EEE' },
+  reviewModeBackBtn: { padding: 10 },
+  reviewModeBackIcon: { fontSize: 24, fontWeight: 'bold', color: '#333' },
+  reviewModeTitle: { fontSize: 18, fontWeight: 'bold', color: '#111' },
+  reviewListScroll: { flex: 1, paddingHorizontal: 5, marginTop: 10 },
+  placeReviewCard: { backgroundColor: '#FFF', borderRadius: 15, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#F0F0F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  reviewAuthorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  authorProfileCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EEE', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  reviewAuthorText: { fontSize: 15, fontWeight: 'bold', color: '#333' },
+  reviewDateText: { fontSize: 12, color: '#888', marginTop: 2 },
+  reviewStarsRow: { flexDirection: 'row', marginBottom: 10 },
+  reviewComment: { fontSize: 14, color: '#444', lineHeight: 20, marginBottom: 10 },
+  reviewPhotosRow: { flexDirection: 'row', marginTop: 5 },
+  reviewPhoto: { width: 100, height: 100, borderRadius: 10, marginRight: 10 },
+  emptyReviewBox: { alignItems: 'center', justifyContent: 'center', marginTop: 60, padding: 20 },
+  emptyReviewText: { fontSize: 16, color: '#666', fontWeight: 'bold', marginBottom: 5 },
+  emptyReviewSubText: { fontSize: 14, color: '#999' },
+  ratingRow: { marginTop: 4, marginBottom: 4, marginLeft: 30 },
+  placeRatingText: { fontSize: 14, fontWeight: 'bold', color: '#43B0AB' },
+  reviewCountText: { fontSize: 12, color: '#888', fontWeight: 'normal', textDecorationLine: 'underline' },
+  summaryRow: { backgroundColor: '#F8F9FA', padding: 8, borderRadius: 8, marginTop: 4, borderLeftWidth: 3, borderLeftColor: '#43B0AB', marginLeft: 30 },
+  placeSummaryText: { fontSize: 13, color: '#555', fontStyle: 'italic' }
 });
 
 export default SavedRouteDetailScreen;
