@@ -214,6 +214,15 @@ class DaySchedule(BaseModel):
 
 # ── 프론트 응답 스키마 ───────────────────────────────────────────────────
 
+class SegmentRouteRequest(BaseModel):
+    """단일 구간 경로 온디맨드 조회 요청"""
+    origin_lat: float
+    origin_lng: float
+    dest_lat:   float
+    dest_lng:   float
+    transport:  TransportCategories
+
+
 class RecommendResponse(BaseModel):
     status:                  str                 # "completed" - 현재 상태
     prompt_preview:          str                 # 실제로 AI에 넘길 프롬프트 (디버그용)

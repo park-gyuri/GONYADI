@@ -154,6 +154,7 @@ const SavedRouteDetailScreen = () => {
   const [saveTitle, setSaveTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false); // 로컬 UI 반영용 (선택사항)
+  const [isNoRouteModalVisible, setNoRouteModalVisible] = useState(false);
 
   const mapRef = useRef(null);
   const scrollViewRef = useRef(null);
@@ -339,9 +340,15 @@ const SavedRouteDetailScreen = () => {
   // 수정 요청
   const handleModifySubmit = async () => {
     if (!modifyText.trim()) return;
+
+    const allCurrentPlaces = Object.values(daysData).flat();
+    if (allCurrentPlaces.length === 0) {
+      setNoRouteModalVisible(true);
+      return;
+    }
+
     setIsModifying(true);
     try {
-      const allCurrentPlaces = Object.values(daysData).flat();
       const placesForApi = allCurrentPlaces.map(p => ({
         name: p.name,
         lat: p.lat ?? 0,
@@ -632,6 +639,33 @@ const SavedRouteDetailScreen = () => {
         </TouchableOpacity>
       </Modal>
       <FolderCreateModal visible={isFolderCreateVisible} onClose={() => setFolderCreateVisible(false)} onSubmit={handleCreateFolder} />
+
+      {/* 경로 없음 안내 팝업 */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isNoRouteModalVisible}
+        onRequestClose={() => setNoRouteModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNoRouteModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.saveModalBox}>
+            <Text style={styles.noRouteModalTitle}>경로 없음</Text>
+            <Text style={styles.noRouteModalMessage}>
+              수정할 경로가 없습니다.{'\n'}장소를 먼저 추가하거나 새로운 경로를 추천받아주세요.
+            </Text>
+            <TouchableOpacity
+              style={styles.noRouteModalBtn}
+              onPress={() => setNoRouteModalVisible(false)}
+            >
+              <Text style={styles.noRouteModalBtnText}>확인</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -709,7 +743,11 @@ const styles = StyleSheet.create({
   folderTagPlus: { padding: 10, borderWidth: 1, borderColor: '#EEE', borderRadius: 10, width: 40, alignItems: 'center' },
   saveTitleInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 10, padding: 10, marginBottom: 20 },
   saveConfirmBtn: { backgroundColor: '#A9E2D9', padding: 15, borderRadius: 10, alignItems: 'center' },
-  saveConfirmBtnText: { fontWeight: 'bold' }
+  saveConfirmBtnText: { fontWeight: 'bold' },
+  noRouteModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111', marginBottom: 12, textAlign: 'center' },
+  noRouteModalMessage: { fontSize: 14, color: '#555', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  noRouteModalBtn: { backgroundColor: '#A9E2D9', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  noRouteModalBtnText: { fontSize: 15, fontWeight: 'bold', color: '#111' },
 });
 
 export default SavedRouteDetailScreen;
