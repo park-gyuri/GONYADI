@@ -18,8 +18,10 @@ def get_folders_by_user(session: Session, user_id: int) -> list[Folders]:
     if not results:
         default_folders = ["국내", "해외"]
         for folder_name in default_folders:
-            db_folder = Folders(name=folder_name, user_id=user_id)
-            session.add(db_folder)
+            existing = session.exec(select(Folders).where(Folders.user_id == user_id, Folders.name == folder_name)).first()
+            if not existing:
+                db_folder = Folders(name=folder_name, user_id=user_id)
+                session.add(db_folder)
         session.commit()
         
         # 다시 조회해서 반환
