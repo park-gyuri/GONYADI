@@ -266,9 +266,6 @@ const ReviewWriteScreen = () => {
 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
         {/* 제목 입력 */}
-        <View style={styles.sectionTitleContainer}>
-          <Text style={styles.sectionTitle}>[제목 작성]</Text>
-        </View>
         <View style={styles.mainTitleContainer}>
           <TextInput
             style={styles.mainTitleInput}
@@ -297,9 +294,6 @@ const ReviewWriteScreen = () => {
         )}
 
         {/* 선택된 일차의 장소 목록 */}
-        <View style={styles.sectionTitleContainer}>
-          <Text style={styles.sectionTitle}>[후기 작성]</Text>
-        </View>
         <View style={styles.listContainer}>
           {currentDayPlaces.map((item, index) => {
             const isLast = index === currentDayPlaces.length - 1;
@@ -417,9 +411,6 @@ const styles = StyleSheet.create({
   dayTabActive: { backgroundColor: '#43B0AB', borderColor: '#43B0AB' },
   dayTabText: { fontSize: 14, color: '#888', fontWeight: '600' },
   dayTabTextActive: { color: '#FFFFFF' },
-
-  sectionTitleContainer: { paddingHorizontal: 16, marginTop: 10, marginBottom: 5 },
-  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#43B0AB' },
 
   listContainer: { paddingHorizontal: 10 },
   rowContainer: { flexDirection: 'row' },
