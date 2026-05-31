@@ -5,25 +5,50 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import SearchIcon from '../components/icons/searchIcon';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchTopLikedReviews } from '../api/reviewApi';
-import { getFullImageUrl } from '../api/apiClient';
+import { getFullImageUrl, apiClient } from '../api/apiClient';
 
 const MainScreen = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [userId, setUserId] = useState(null);
+  
+  const CITIES = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '제주', '경주', '전주', '여수', '강릉', '속초', '춘천', '수원', '포항', '통영', '거제', '안동', '목포', '순천', '군산', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '평창', '가평', '남해', '보령', '태안', '담양', '하동'];
+  const filteredCities = searchQuery.trim() === '' ? [] : CITIES.filter(city => city.includes(searchQuery.trim()));
+
   const [topReviews, setTopReviews] = useState([]);
   const [loadingTop, setLoadingTop] = useState(true);
 
+  // 사용자 정보 및 유저별 검색 기록 로드
   useEffect(() => {
-    const loadHistory = async () => {
+    const loadUserAndHistory = async () => {
+      let currentUserId = 'guest';
       try {
-        const storedHistory = await AsyncStorage.getItem('search_history');
-        if (storedHistory) setSearchHistory(JSON.parse(storedHistory));
+        const token = await AsyncStorage.getItem('access_token');
+        if (token) {
+          const profile = await apiClient('/api/v1/auth/me');
+          if (profile && profile.user_id) {
+            currentUserId = profile.user_id;
+            setUserId(currentUserId);
+          }
+        }
+      } catch (e) {
+        console.log('사용자 정보 로드 실패 (게스트로 간주)');
+      }
+
+      try {
+        const storedHistory = await AsyncStorage.getItem(`search_history_${currentUserId}`);
+        if (storedHistory) {
+          setSearchHistory(JSON.parse(storedHistory));
+        } else {
+          setSearchHistory([]);
+        }
       } catch (e) {
         console.error('검색 기록 로드 실패', e);
       }
     };
-    loadHistory();
+    loadUserAndHistory();
   }, []);
 
   useFocusEffect(useCallback(() => {
@@ -41,19 +66,21 @@ const MainScreen = () => {
     loadTop();
   }, []));
 
-  const saveHistoryToStorage = async (newHistory) => {
+  const saveHistoryToStorage = async (newHistory, currentUserId) => {
     try {
-      await AsyncStorage.setItem('search_history', JSON.stringify(newHistory));
+      const storageKey = `search_history_${currentUserId || 'guest'}`;
+      await AsyncStorage.setItem(storageKey, JSON.stringify(newHistory));
     } catch (e) {
       console.error('검색 기록 저장 실패', e);
     }
   };
 
   const navigateToRecommend = (keyword = searchQuery) => {
+    setShowSuggestions(false);
     if (keyword.trim() !== '') {
       const newHistory = [keyword.trim(), ...searchHistory.filter(item => item !== keyword.trim())].slice(0, 50);
       setSearchHistory(newHistory);
-      saveHistoryToStorage(newHistory);
+      saveHistoryToStorage(newHistory, userId);
       router.push({ pathname: '/recommend', params: { destination: keyword.trim() } });
     } else {
       router.push('/recommend');
@@ -63,7 +90,7 @@ const MainScreen = () => {
   const removeHistoryItem = (keyword) => {
     const newHistory = searchHistory.filter(item => item !== keyword);
     setSearchHistory(newHistory);
-    saveHistoryToStorage(newHistory);
+    saveHistoryToStorage(newHistory, userId);
   };
 
   const getCardImage = (review) => {
@@ -89,13 +116,35 @@ const MainScreen = () => {
               style={styles.searchInput}
               placeholder="여행지를 검색하세요"
               value={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
               onSubmitEditing={() => navigateToRecommend()}
             />
             <TouchableOpacity onPress={() => navigateToRecommend()} style={styles.searchIconBtn}>
               <SearchIcon width={20} height={20} />
             </TouchableOpacity>
           </View>
+
+          {showSuggestions && filteredCities.length > 0 && (
+            <ScrollView style={styles.suggestionsWrapper} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+              {filteredCities.map((city, index) => (
+                <TouchableOpacity 
+                  key={index} 
+                  style={styles.suggestionItem}
+                  onPress={() => {
+                    setSearchQuery(city);
+                    navigateToRecommend(city);
+                  }}
+                >
+                  <SearchIcon width={14} height={14} style={{ marginRight: 8, opacity: 0.5 }} />
+                  <Text style={styles.suggestionText}>{city}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
 
           <Text style={styles.searchHistoryTitle}>검색 내역</Text>
           <View style={styles.searchHistoryWrapper}>
@@ -203,6 +252,26 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  suggestionsWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CDE5DE',
+    marginTop: -12,
+    marginBottom: 20,
+    paddingVertical: 8,
+    maxHeight: 180,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  suggestionText: {
     fontSize: 15,
     color: '#333',
   },

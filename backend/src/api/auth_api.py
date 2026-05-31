@@ -222,3 +222,17 @@ def upload_profile_image(
         "user_profile_image": public_url
     }
 
+@router.delete("/me")
+def withdraw(
+    current_user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """현재 로그인한 유저의 계정을 탈퇴(삭제)합니다."""
+    # current_user는 dictionary이므로, 실제 Users 객체를 불러와야 할 수 있음.
+    # get_current_user에서 반환하는 형태를 확인 후 적절히 객체를 조회
+    user = user_crud.get_user_by_id(current_user.user_id, session)
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+        
+    user_crud.delete_user(user, session)
+    return {"message": "계정이 성공적으로 탈퇴되었습니다."}
