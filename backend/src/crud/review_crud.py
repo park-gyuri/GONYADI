@@ -205,6 +205,11 @@ def delete_review(session: Session, review_id: int, user_id: int) -> bool:
     if not review or review.user_id != user_id:
         return False
     
+    # 먼저 이 리뷰에 달린 좋아요(UserReviewLike) 기록 삭제
+    likes = session.exec(select(UserReviewLike).where(UserReviewLike.review_id == review_id)).all()
+    for like in likes:
+        session.delete(like)
+        
     session.delete(review)
     session.commit()
     return True
