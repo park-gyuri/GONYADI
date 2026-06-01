@@ -431,13 +431,14 @@ async def handle_recommendation(
             detail=f"'{req.region}' 주변에서 조건에 맞는 장소를 찾지 못했습니다. 검색 범위나 테마를 변경해 보세요.",
         )
 
-    # 후보 부족 여부 판단 (자동 확장 없이 사용자에게 선택권 부여)
-    insufficient = len(candidates) < MIN_CANDIDATES
+    # 후보 부족 여부 판단 (일수 기반 동적 임계값 사용)
+    min_needed = max(MIN_CANDIDATES, total_days * 6)
+    insufficient = len(candidates) < min_needed
     shortage_msg = ""
     if insufficient:
         theme_str = "·".join([th.value for th in req.themes])
         shortage_msg = f"'{theme_str}' 장소가 부족합니다. 검색 반경을 넓히시겠습니까?"
-        print(f"[추천] 후보 부족 ({len(candidates)}개 < {MIN_CANDIDATES}개) — 프론트 팝업 트리거")
+        print(f"[추천] 후보 부족 ({len(candidates)}개 < {min_needed}개) — 프론트 팝업 트리거")
 
     # ── Gemini Curation (1차: Spatial Filter 통과 후보 20개에서 장소 선택) ──────
     # 동기 Gemini 함수를 스레드풀에서 실행해 async 이벤트 루프 블록 방지

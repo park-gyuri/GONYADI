@@ -177,10 +177,15 @@ export const RouteProvider = ({ children }) => {
     try {
       const { updateFolderApi } = require('../api/routeApi');
       await updateFolderApi(folderId, newName);
+
+      // setFolders 전에 현재 folders에서 기존 이름 확인
+      const oldName = folders.find(f => f.folder_pk === folderId)?.name;
       setFolders(prev => prev.map(f => f.folder_pk === folderId ? { ...f, name: newName } : f));
-      
-      // 관련 경로 카테고리 이름도 일괄 업데이트 (선택 사항)
-      setAllRoutes(prev => prev.map(r => r.category === prev.find(f=>f.folder_pk===folderId)?.name ? { ...r, category: newName } : r));
+
+      // 기존 이름으로 매핑된 경로 카테고리를 새 이름으로 일괄 업데이트
+      if (oldName) {
+        setAllRoutes(prev => prev.map(r => r.category === oldName ? { ...r, category: newName } : r));
+      }
     } catch (error) {
       console.error('폴더 이름 수정 실패:', error);
       throw error;

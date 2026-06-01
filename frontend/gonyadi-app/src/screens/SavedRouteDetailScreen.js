@@ -636,9 +636,13 @@ const SavedRouteDetailScreen = () => {
                 pinColor={selectedPlaceId === place.id ? '#43B0AB' : 'red'}
                 onPress={() => {
                   setSelectedPlaceId(place.id);
-                  placeRefs.current[place.id]?.measureLayout(scrollViewRef.current, (x, y) => {
-                    scrollViewRef.current?.scrollTo({ y: y - 10, animated: true });
-                  });
+                  if (placeRefs.current[place.id]) {
+                    placeRefs.current[place.id].measureLayout(
+                      scrollViewRef.current?.getInnerViewRef?.() || scrollViewRef.current,
+                      (x, y) => { scrollViewRef.current?.scrollTo({ y: y - 10, animated: true }); },
+                      () => {}
+                    );
+                  }
                 }}
               />
             ))}
@@ -745,7 +749,6 @@ const SavedRouteDetailScreen = () => {
                           placeRefs.current[place.id]?.measureLayout(scrollViewRef.current, (x, y) => {
                             scrollViewRef.current?.scrollTo({ y: y - 10, animated: true });
                           });
-                          handleViewPlaceReviews(place);
                         }}
                       >
                         <View style={styles.placeInfo}>
@@ -754,12 +757,12 @@ const SavedRouteDetailScreen = () => {
                             <Text style={[styles.placeNameText, selectedPlaceId === place.id && { color: '#43B0AB' }]}>{place.name}</Text>
                           </View>
 
-                          {/* 리뷰 시그널 미리 노출 (이름 바로 아래) */}
-                          <View style={styles.ratingRow}>
+                          {/* 리뷰 별점/개수 터치 시 리뷰 목록 표시 */}
+                          <TouchableOpacity style={styles.ratingRow} onPress={() => handleViewPlaceReviews(place)} activeOpacity={0.7}>
                             <Text style={styles.placeRatingText}>
                               ★{placesStats[place.name]?.average_rating.toFixed(1) || '0.0'} <Text style={styles.reviewCountText}>(리뷰 {placesStats[place.name]?.review_count || 0}개)</Text>
                             </Text>
-                          </View>
+                          </TouchableOpacity>
 
                           {/* 주소 */}
                           {place.address && <Text style={styles.placeAddress}>{place.address}</Text>}
