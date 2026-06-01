@@ -3,7 +3,65 @@ from collections import defaultdict
 from src.schemas.recommend_schema import PlaceResult, CuratedPlaceResult, PlaceCandidate, DaySchedule
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
+from typing import Optional
 import os
+
+
+class InsertPosition(BaseModel):
+    day: Optional[int] = None           # 삽입할 일차 (1-based). null이면 마지막 일차
+    index: Optional[int] = None         # 해당 일차 내 삽입 위치 (1-based). null이면 맨 끝
+    after_place: Optional[str] = None   # 특정 장소명 바로 뒤에 삽입
+    before_place: Optional[str] = None  # 특정 장소명 바로 앞에 삽입
+
+
+class UserIntent(BaseModel):
+    area: Optional[str] = None          # 이동 요청 지역 (예: "수성구", "강남구")
+    remove_places: list[str] = []       # 빼달라는 장소명
+    add_places: list[str] = []          # 넣어달라는 장소명 또는 카테고리 (예: "해수욕장")
+    add_themes: list[str] = []          # 추가 테마 (예: "카페", "맛집")
+    insert_position: Optional[InsertPosition] = None  # 삽입 위치 (null이면 맨 끝)
+    needs_full_regen: bool = False      # 전체 재추천이 필요한 복잡한 요청 여부
+    free_instruction: str = ""          # 위 항목으로 분류 안 되는 나머지 요청
+
+
+def parse_user_intent(region: str, user_message: str) -> UserIntent:
+    """user_message를 Gemini로 파싱해 구조화된 UserIntent를 반환."""
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    prompt = (
+        f"사용자가 '{region}' 여행 경로를 수정 요청했습니다.\n"
+        f"요청 내용: \"{user_message}\"\n\n"
+        "위 요청에서 다음 항목을 추출하세요:\n"
+        "- area: 지역/구역 변경 요청이 있으면 해당 지역명(예: '수성구'). 없으면 null.\n"
+        "- remove_places: 제거를 원하는 장소명 목록. '빼줘', '제거해줘' 같은 직접 표현뿐 아니라 "
+        "'안갔으면 좋겠다', '왜 넣었는지 모르겠다', '별로다', '가고싶지 않다' 등 부정·회피 표현도 포함. 없으면 [].\n"
+        "- add_places: 넣어달라고 언급한 장소명 또는 카테고리 목록(예: '해수욕장', '이가리 닻 전망대'). 없으면 [].\n"
+        "- add_themes: '카페 더 넣어줘', '맛집 위주로' 같이 테마 추가 요청. 없으면 [].\n"
+        "- insert_position: 삽입 위치 정보. 다음 중 해당하는 필드만 채우고 나머지는 null:\n"
+        "    · day: '2일차에', '첫째 날에' 등 특정 일차 언급 시 숫자(1-based). 없으면 null.\n"
+        "    · index: '3번째로', '두 번째 자리에' 등 순서 언급 시 숫자(1-based). 없으면 null.\n"
+        "    · after_place: 'A 다음에', 'B 뒤에' 등 특정 장소 뒤 삽입 요청 시 그 장소명. 없으면 null.\n"
+        "    · before_place: 'A 앞에', 'B 전에' 등 특정 장소 앞 삽입 요청 시 그 장소명. 없으면 null.\n"
+        "    · 위치 언급이 전혀 없거나 '마지막에', '맨 끝에' 요청이면 insert_position 자체를 null로.\n"
+        "- needs_full_regen: 지역 변경, 테마 전면 교체, '전체 다시 짜줘' 등 일정 전체를 바꿔야 하는 요청이면 true. 단순 추가/삭제면 false.\n"
+        "- free_instruction: 위 항목으로 분류되지 않는 나머지 요청 전문. 없으면 ''.\n"
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=UserIntent,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        intent: UserIntent = response.parsed or UserIntent()
+        print(f"[Intent] {intent}")
+        return intent
+    except Exception as e:
+        print(f"[Intent] 파싱 실패: {e}")
+        return UserIntent(free_instruction=user_message)
 
 def get_gemini_places(prompt: str) -> list[DaySchedule]:
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))

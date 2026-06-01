@@ -10,13 +10,54 @@ from src.schemas.recommend_schema import (
     RouteSegment, RouteDetail, DaySchedule, PlaceResult,
 )
 from src.services.prompt_builder import build_rag_prompt
-from src.services.gemini import get_gemini_curated_places, critique_and_revise_itinerary
+from src.services.gemini import get_gemini_curated_places, critique_and_revise_itinerary, parse_user_intent
 from src.services.google_routes import build_route_segments
-from src.services.rag_retrieval import retrieve_and_filter_candidates, MIN_CANDIDATES
+from src.services.rag_retrieval import retrieve_and_filter_candidates, MIN_CANDIDATES, fetch_google_places_text_search
 import src.crud.place_crud as place_crud
 
 
 router = APIRouter(prefix="/recommend", tags=["recommend"])
+
+
+def _insert_places(schedule: list, places_to_add: list, pos) -> None:
+    """InsertPosition에 따라 schedule 내 올바른 위치에 places_to_add를 삽입 (in-place)."""
+    if not schedule:
+        return
+
+    # 대상 일차 결정
+    if pos and pos.day is not None:
+        target = next((d for d in schedule if d.day == pos.day), schedule[-1])
+    else:
+        target = schedule[-1]
+
+    if pos is None:
+        # 위치 미지정 → 맨 끝
+        target.places.extend(places_to_add)
+        return
+
+    # after_place / before_place 기반 삽입
+    if pos.after_place or pos.before_place:
+        ref_name = pos.after_place or pos.before_place
+        for i, p in enumerate(target.places):
+            if ref_name in p.name or p.name in ref_name:
+                insert_idx = i + 1 if pos.after_place else i
+                for j, new_p in enumerate(places_to_add):
+                    target.places.insert(insert_idx + j, new_p)
+                return
+        # 참조 장소를 못 찾으면 맨 끝에 추가
+        target.places.extend(places_to_add)
+        return
+
+    # index 기반 삽입 (1-based)
+    if pos.index is not None:
+        insert_idx = max(0, min(pos.index - 1, len(target.places)))
+        for j, new_p in enumerate(places_to_add):
+            target.places.insert(insert_idx + j, new_p)
+        return
+
+    # 그 외 → 맨 끝
+    target.places.extend(places_to_add)
+
 
 
 async def _geocode_region(region: str) -> tuple[float, float] | None:
@@ -270,6 +311,116 @@ async def handle_recommendation(
                 detail=f"'{req.region}' 지역의 좌표를 찾을 수 없습니다. 지역명을 다시 확인해 주세요.",
             )
 
+    # ── 수정 요청 시 Gemini로 의도 파싱 → 케이스별 직접 처리 or 전체 재추천 ──
+    if req.original_places and req.user_message.strip():
+        loop = asyncio.get_event_loop()
+        intent = await loop.run_in_executor(None, parse_user_intent, req.region, req.user_message)
+        print(f"[Intent] {intent}")
+
+        # ── Case A: 단순 추가/삭제 → 파이프라인 없이 직접 처리 ────────────────
+        if not intent.needs_full_regen and not intent.area and not intent.add_themes:
+
+            schedule = req.original_schedule or _flat_to_schedule(req.original_places, req.days or 1)
+
+            # A-1) 장소 삭제
+            if intent.remove_places:
+                for day_sched in schedule:
+                    day_sched.places = [
+                        p for p in day_sched.places
+                        if not any(r in p.name or p.name in r for r in intent.remove_places)
+                    ]
+
+            # A-2) 장소 추가 (Google Places Text Search로 검색 후 삽입)
+            if intent.add_places:
+                added: list[PlaceResult] = []
+                for keyword in intent.add_places:
+                    results = await fetch_google_places_text_search(
+                        query=f"{req.region} {keyword}",
+                        lat=center_lat, lng=center_lng, max_count=1,
+                    )
+                    if results:
+                        p = results[0]
+                        added.append(PlaceResult(
+                            name=p["name"], lat=p["lat"], lng=p["lng"],
+                            reason=keyword, duration=60, category=p.get("category") or "관광명소",
+                        ))
+
+                if added and schedule:
+                    _insert_places(schedule, added, intent.insert_position)
+
+            places_from_ai = [p for d in schedule for p in d.places]
+            transport_names = [t.value for t in req.transports]
+            route_segments = _schedule_to_route_segments(schedule, transport_names)
+
+            return RecommendResponse(
+                status="completed",
+                prompt_preview=f"[직접 처리] {req.user_message}",
+                schedule=schedule,
+                places=places_from_ai,
+                route_segments=route_segments,
+                insufficient_candidates=False,
+                shortage_message="",
+                current_radius_km=0.0,
+            )
+
+        # ── Case B: 지역 변경 / 전체 재추천 → 기존 파이프라인 실행 ────────────
+        updates = {}
+
+        if intent.area:
+            new_coords = await _geocode_region(f"{req.region} {intent.area}")
+            if not new_coords:
+                new_coords = await _geocode_region(intent.area)
+            if new_coords:
+                center_lat, center_lng = new_coords
+                updates["center_lat"] = center_lat
+                updates["center_lng"] = center_lng
+
+        if intent.remove_places:
+            filtered = [
+                p for p in req.original_places
+                if not any(r in p.name or p.name in r for r in intent.remove_places)
+            ]
+            updates["original_places"] = filtered
+
+        if intent.add_themes:
+            from src.schemas.recommend_schema import ThemeCategories
+            existing = {t.value for t in req.themes}
+            extra = [ThemeCategories(t) for t in intent.add_themes if t in ThemeCategories._value2member_map_ and t not in existing]
+            if extra:
+                updates["themes"] = list(req.themes) + extra
+
+        if updates:
+            req = req.model_copy(update=updates)
+
+    # ── 초기 추천 요청에도 user_message 파싱 적용 ─────────────────────────────
+    elif req.user_message.strip():
+        loop = asyncio.get_event_loop()
+        intent = await loop.run_in_executor(None, parse_user_intent, req.region, req.user_message)
+        print(f"[Intent·초기] {intent}")
+
+        updates = {}
+
+        # 지역 언급 → 검색 좌표 갱신
+        if intent.area:
+            new_coords = await _geocode_region(f"{req.region} {intent.area}")
+            if not new_coords:
+                new_coords = await _geocode_region(intent.area)
+            if new_coords:
+                center_lat, center_lng = new_coords
+                updates["center_lat"] = center_lat
+                updates["center_lng"] = center_lng
+
+        # 추가 테마 → themes 병합
+        if intent.add_themes:
+            from src.schemas.recommend_schema import ThemeCategories
+            existing = {t.value for t in req.themes}
+            extra = [ThemeCategories(t) for t in intent.add_themes if t in ThemeCategories._value2member_map_ and t not in existing]
+            if extra:
+                updates["themes"] = list(req.themes) + extra
+
+        if updates:
+            req = req.model_copy(update=updates)
+
     # ── RAG 파이프라인 ────────────────────────────────────────────────────────
     print(f"[추천] RAG 파이프라인 실행 (center={center_lat},{center_lng})")
     candidates, review_candidates, used_radius_km, pinned_names = await retrieve_and_filter_candidates(req, session)
@@ -320,7 +471,7 @@ async def handle_recommendation(
         ]
         schedule = _flat_to_schedule(fallback_places, total_days)
 
-    # DB 플래그 기반 뱃지 설정 (2차 검토에서 교체된 장소 포함하도록 review_candidates 기준)
+    # DB 플래그 기반 뱃지 설정 + 주소/카테고리 채우기
     candidate_map = {c.name: c for c in review_candidates}
     is_pet_condition        = "반려동물 동반" in condition_values
     is_wheelchair_condition = "휠체어" in condition_values
@@ -335,6 +486,11 @@ async def handle_recommendation(
                 place.accessibility_unconfirmed = True
             if is_pet_condition and (cand is None or cand.is_pet_friendly is not True):
                 place.pet_unconfirmed = True
+            # DB의 실제 주소와 카테고리로 덮어쓰기
+            if cand and cand.address:
+                place.address = cand.address
+            if cand and cand.category:
+                place.category = cand.category
 
     # Gemini가 미처 고치지 못한 식사 부족을 프로그래매틱으로 최종 보정
     schedule = _enforce_meal_structure(schedule, review_candidates)

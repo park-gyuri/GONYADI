@@ -278,7 +278,7 @@ const RouteResultScreen = () => {
 
   // 장소(places)와 이동수단(route_segments) 추출
   const places = apiData?.places || [];
-  const routeSegments = apiData?.route_segments || [];
+  const [routeSegments, setRouteSegments] = useState(apiData?.route_segments || []);
 
 
   // 사용자가 선택한 transports 중 첫 번째를 기본 모드로 사용
@@ -449,7 +449,8 @@ const RouteResultScreen = () => {
           return {
             id: place.id || `${dayInfo.day}-${index}`,
             name: place.name,
-            address: place.address || place.description || place.reason,
+            address: place.address || null,
+            category: place.category || null,
             transportSegment: segment,
             lat: place.lat || (35.10 + Math.random() * 0.05),
             lng: place.lng || (129.04 + Math.random() * 0.05),
@@ -657,6 +658,21 @@ const RouteResultScreen = () => {
         category: '관광',
       }));
 
+      // 일차별 구조 보존 (순서/일차 정보를 Gemini에 명시적으로 전달)
+      const scheduleForApi = Object.keys(daysData)
+        .sort((a, b) => Number(a) - Number(b))
+        .map(day => ({
+          day: Number(day),
+          places: (daysData[day] || []).map(p => ({
+            name: p.name,
+            lat: p.lat ?? 0,
+            lng: p.lng ?? 0,
+            reason: p.address || p.name,
+            duration: 60,
+            category: '관광',
+          })),
+        }));
+
       // 사용자 메시지에서 테마 키워드를 감지해 원본 테마와 합산
       const ALL_THEMES = ['힐링', '맛집', '카페', '사진', '전시', '체험', '쇼핑', '역사', '문화', '축제', '자연', '오락', '레저'];
       const detectedThemes = ALL_THEMES.filter(t => modifyText.includes(t));
@@ -675,13 +691,67 @@ const RouteResultScreen = () => {
         end_date: originalRequest?.end_date ?? undefined,
         user_message: modifyText,
         original_places: placesForApi,
+        original_schedule: scheduleForApi,
       };
 
       console.log('[수정 요청] Payload:', JSON.stringify(modifyData));
       const data = await requestNewRoute(modifyData);
 
+      // 화면 전체 교체 대신 변경된 장소만 스마트 머지
+      const newSchedule = data.schedule || [];
+      const newSegments = data.route_segments || [];
+      const newSegmentByName = {};
+      newSegments.forEach(seg => { newSegmentByName[seg.from_name] = seg; });
+
+      setDaysData(prev => {
+        const updated = {};
+        newSchedule.forEach(dayInfo => {
+          const day = dayInfo.day;
+          const currentPlaces = prev[day] || [];
+          const currentByName = {};
+          currentPlaces.forEach(p => { currentByName[p.name] = p; });
+
+          updated[day] = dayInfo.places.map((np, index) => {
+            const newSegment = newSegmentByName[np.name] || null;
+            const freshId = `${day}-${index}`;
+            if (currentByName[np.name]) {
+              return { ...currentByName[np.name], id: freshId, transportSegment: newSegment };
+            }
+            return {
+              id: freshId,
+              name: np.name,
+              address: np.reason || np.description || np.address || '',
+              transportSegment: newSegment,
+              lat: np.lat,
+              lng: np.lng,
+              accessibilityUnconfirmed: np.accessibility_unconfirmed || false,
+              petUnconfirmed: np.pet_unconfirmed || false,
+            };
+          });
+        });
+        Object.keys(prev).forEach(day => {
+          if (!updated[day]) updated[day] = prev[day];
+        });
+        return updated;
+      });
+
+      setRouteSegments(newSegments);
+
+      // segmentModes도 새 segments 기준으로 갱신
+      const newModes = {};
+      newSegments.forEach(seg => {
+        const avail = Object.keys(seg.routes || {}).filter(k => seg.routes[k] != null);
+        newModes[seg.from_name] = avail.includes(_defaultModeKey) ? _defaultModeKey : (avail[0] ?? null);
+      });
+      setSegmentModes(newModes);
+
+      // 새 장소들의 리뷰 통계 갱신
+      const newPlaceNames = (data.schedule || []).flatMap(d => d.places.map(p => p.name));
+      if (newPlaceNames.length > 0) {
+        fetchPlacesStats(newPlaceNames).then(res => setPlacesStats(res)).catch(() => {});
+      }
+
       setRecommendationCache(data, modifyData);
-      router.replace('/route-result');
     } catch (error) {
       console.error('[수정 실패]', error.message);
       Alert.alert('에러', '수정 요청에 실패했습니다. 다시 시도해주세요.');
@@ -1036,7 +1106,7 @@ const RouteResultScreen = () => {
                             </Text>
                           </View>
 
-                          {/* 실제 주소 (이유 말고) */}
+                          {/* 주소 */}
                           {place.address && <Text style={styles.placeAddress}>{place.address}</Text>}
 
                           {/* AI 한 줄 요약 */}
@@ -1252,7 +1322,7 @@ const styles = StyleSheet.create({
   placeInfo: { flex: 1 },
   placeNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   placeNameText: { fontSize: 18, fontWeight: 'bold', color: '#111', marginLeft: 8 },
-  placeAddress: { fontSize: 13, color: '#777', marginLeft: 30 },
+  placeAddress: { fontSize: 12, color: '#888', marginLeft: 30, marginBottom: 2 },
   accessibilityWarning: { fontSize: 11, color: '#E07B39', marginLeft: 30, marginTop: 3 },
   deleteBtn: { padding: 5 },
 

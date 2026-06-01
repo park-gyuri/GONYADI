@@ -732,6 +732,7 @@ const RecommendInputScreen = () => {
               onDayPress={handleDayPress}
               onMonthChange={(month) => setCurrentMonth(month.dateString.substring(0, 7))}
               monthFormat={'yyyy년 MM월'}
+              minDate={new Date().toISOString().split('T')[0]}
               theme={{
                 selectedDayBackgroundColor: '#43B0AB',
                 todayTextColor: '#43B0AB',
