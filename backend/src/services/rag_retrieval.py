@@ -312,12 +312,14 @@ async def retrieve_and_filter_candidates(
     # ── Step 4: Google Places + TourAPI 보충 ─────────────────────────────────
     condition_values = [c.value for c in req.conditions]
     has_special_condition = bool(condition_values)
-    need_fallback = len(candidates) < MIN_CANDIDATES or has_special_condition
+    # 일수에 비례해 최소 후보 수 동적 계산 (하루 6개 × 일수, 최소 8개 보장)
+    min_needed = max(MIN_CANDIDATES, (req.days or 1) * 6)
+    need_fallback = len(candidates) < min_needed or has_special_condition
 
     if need_fallback:
         reason = []
-        if len(candidates) < MIN_CANDIDATES:
-            reason.append(f"DB 후보 {len(candidates)}개 < MIN({MIN_CANDIDATES})")
+        if len(candidates) < min_needed:
+            reason.append(f"DB 후보 {len(candidates)}개 < 필요({min_needed}개)")
         if has_special_condition:
             reason.append(f"특수 조건 {condition_values}")
         print(f"[RAG] {' + '.join(reason)} → Google Places + TourAPI 실행 (반경 {radius_km}km)")
@@ -440,10 +442,12 @@ async def retrieve_and_filter_candidates(
     # 서브샘플 전체를 보존 — 2차 Gemini 검토 시 교체 후보로 사용
     pre_filtered = list(candidates)
 
+    # 다일 여행일수록 더 많은 후보가 필요: 하루 10개 × 일수, 최소 20, 최대 30
+    spatial_max_result = min(30, max(20, (req.days or 1) * 10))
     filtered = spatial_filter(
         candidates=candidates,
         max_pair_dist_km=max_pair,
-        max_result=20,
+        max_result=spatial_max_result,
     )
 
     # Spatial Filter 이후에도 핀된 장소 보존

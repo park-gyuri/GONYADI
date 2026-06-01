@@ -1085,10 +1085,7 @@ const RouteResultScreen = () => {
                           selectedPlaceId === place.id && styles.placeCardSelected
                         ]}
                         activeOpacity={0.7}
-                        onPress={() => {
-                          handlePlaceSelect(place);
-                          handleViewPlaceReviews(place);
-                        }}
+                        onPress={() => handlePlaceSelect(place)}
                       >
                         <View style={styles.placeInfo}>
                           <View style={styles.placeNameRow}>
@@ -1099,12 +1096,12 @@ const RouteResultScreen = () => {
                             ]}>{place.name}</Text>
                           </View>
 
-                          {/* 리뷰 시그널 미리 노출 (이름 바로 아래) */}
-                          <View style={styles.ratingRow}>
+                          {/* 리뷰 별점/개수 터치 시 리뷰 목록 표시 */}
+                          <TouchableOpacity style={styles.ratingRow} onPress={() => handleViewPlaceReviews(place)} activeOpacity={0.7}>
                             <Text style={styles.placeRatingText}>
                               ★{placesStats[place.name]?.average_rating.toFixed(1) || '0.0'} <Text style={styles.reviewCountText}>(리뷰 {placesStats[place.name]?.review_count || 0}개)</Text>
                             </Text>
-                          </View>
+                          </TouchableOpacity>
 
                           {/* 주소 */}
                           {place.address && <Text style={styles.placeAddress}>{place.address}</Text>}
