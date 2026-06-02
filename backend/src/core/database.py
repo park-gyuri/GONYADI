@@ -7,6 +7,11 @@ load_dotenv()
 # DATABASE_URL 직접 지정 시 우선 사용 (Supabase 등 외부 DB)
 # 없으면 개별 환경변수로 조합 (로컬 Docker)
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# SQLAlchemy 2.0 doesn't support 'postgres://', so we replace it with 'postgresql://'
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 if not DATABASE_URL:
     DB_USER     = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
