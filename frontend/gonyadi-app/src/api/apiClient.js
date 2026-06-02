@@ -79,11 +79,12 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
   try {
     console.log(`[통신 시도] ${finalOptions.method || 'GET'} ${url}`);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch(url, { ...finalOptions, signal: controller.signal });
-    clearTimeout(timeoutId);
+    // AbortController는 Hermes(APK)에서 unhandled exception을 유발할 수 있어
+    // Promise.race 방식으로 타임아웃을 구현
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('요청 시간이 초과됐습니다.')), timeout)
+    );
+    const response = await Promise.race([fetch(url, finalOptions), timeoutPromise]);
 
     // 1. 서버에서 에러(400, 401, 500 등)를 뱉었을 때
     if (!response.ok) {
@@ -105,11 +106,10 @@ export const apiClient = async (endpoint, options = {}, timeout = 10000) => {
               console.log("[apiClient] 토큰 갱신 성공! 원래 요청 재시도...");
               finalOptions.headers['Authorization'] = `Bearer ${refreshData.access_token}`;
               
-              const retryController = new AbortController();
-              const retryTimeoutId = setTimeout(() => retryController.abort(), timeout);
-              
-              const retryResp = await fetch(url, { ...finalOptions, signal: retryController.signal });
-              clearTimeout(retryTimeoutId);
+              const retryTimeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('요청 시간이 초과됐습니다.')), timeout)
+              );
+              const retryResp = await Promise.race([fetch(url, finalOptions), retryTimeoutPromise]);
               
               if (retryResp.ok) {
                 return await retryResp.json();

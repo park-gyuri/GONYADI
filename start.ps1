@@ -135,11 +135,19 @@ $localIP = (Get-NetIPAddress -AddressFamily IPv4 |
 
 if ($localIP) {
     Write-Ok "Current PC IP: $localIP"
-    
-    # Auto-update frontend .env with the new IP address to prevent connection issues
+
     $frontendEnvPath = Join-Path $ProjectRoot "frontend\gonyadi-app\.env"
-    "EXPO_PUBLIC_API_URL=http://${localIP}:8000" | Out-File -FilePath $frontendEnvPath -Encoding utf8
-    Write-Ok "Auto-updated frontend .env with EXPO_PUBLIC_API_URL=http://${localIP}:8000"
+    $existingUrl = ""
+    if (Test-Path $frontendEnvPath) {
+        $existingUrl = (Get-Content $frontendEnvPath | Select-String "EXPO_PUBLIC_API_URL=").ToString() -replace "EXPO_PUBLIC_API_URL=", ""
+    }
+
+    if ($existingUrl -like "https://*") {
+        Write-Ok "Frontend .env already set to remote URL ($existingUrl) — skipping auto-update"
+    } else {
+        "EXPO_PUBLIC_API_URL=http://${localIP}:8000" | Out-File -FilePath $frontendEnvPath -Encoding utf8
+        Write-Ok "Auto-updated frontend .env with EXPO_PUBLIC_API_URL=http://${localIP}:8000"
+    }
 }
 
 Write-Host ""
