@@ -97,7 +97,7 @@ export const saveItinerary = async (itineraryData) => {
   return await apiClient('/api/v1/itineraries', {
     method: 'POST',
     body: JSON.stringify(itineraryData),
-  });
+  }, 30000);
 };
 
 /**

@@ -801,7 +801,7 @@ const RouteResultScreen = () => {
         budget_per_person: originalRequest?.budget_per_person ?? null,
         start_date: originalRequest?.start_date ?? null,
         end_date: originalRequest?.end_date ?? null,
-        recommendation_data: { ...apiData, _request: originalRequest },
+        recommendation_data: { ...apiData, prompt_preview: undefined, _request: originalRequest },
       };
 
       // 🌟 백엔드 저장 API 호출
