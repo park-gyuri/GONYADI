@@ -418,11 +418,20 @@ async def handle_recommendation(
             if extra:
                 updates["themes"] = list(req.themes) + extra
 
-        # 특정 장소 지정 → user_message를 장소명만으로 교체해 RAG 텍스트 검색 정확도 향상
-        # (구어체 문장 전체를 Google Places에 던지면 엉뚱한 결과가 나올 수 있음)
+        # 특정 장소 지정 → 각 장소명을 개별 검색해 공식 명칭으로 교체
+        # max_count=1로 가장 관련성 높은 장소 하나만 가져와 엉뚱한 장소 핀 방지
         if intent.add_places:
-            updates["user_message"] = " ".join(intent.add_places)
-            print(f"[Intent·초기] 장소 지정 감지 → user_message 교체: {updates['user_message']}")
+            official_names = []
+            for place_keyword in intent.add_places:
+                results = await fetch_google_places_text_search(
+                    query=f"{req.region} {place_keyword}",
+                    lat=center_lat, lng=center_lng, max_count=1,
+                )
+                if results:
+                    official_names.append(results[0]["name"])
+                    print(f"[Intent·초기] '{place_keyword}' → 공식명: '{results[0]['name']}'")
+            updates["user_message"] = " ".join(official_names or intent.add_places)
+            print(f"[Intent·초기] 장소 지정 → user_message 교체: {updates['user_message']}")
 
         if updates:
             req = req.model_copy(update=updates)

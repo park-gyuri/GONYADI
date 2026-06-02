@@ -293,7 +293,7 @@ async def retrieve_and_filter_candidates(
             query=text_query,
             lat=req.center_lat,
             lng=req.center_lng,
-            max_count=5,
+            max_count=1,
         )
         if mention_results:
             saved = place_crud.bulk_upsert_places(mention_results, session)
