@@ -5,6 +5,7 @@ import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { requestNewRoute, setRecommendationCache } from '../api/routeApi';
+import { BASE_URL } from '../api/apiClient';
 import {
   mockRouteResultBusan,
   mockRouteResultDaegu,
@@ -44,6 +45,11 @@ const RecommendInputScreen = () => {
       setDestination(initialDestination);
     }
   }, [initialDestination]);
+
+  // 화면 진입 시 Render 서버 웨이크업 (콜드 스타트 방지)
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/v1/reviews`).catch(() => {});
+  }, []);
 
   // 1. 카테고리 바텀 시트 스위치
   const [isModalVisible, setModalVisible] = useState(false);
