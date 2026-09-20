@@ -20,11 +20,7 @@ services:
         sync: false
       - key: TOUR_API_KEY
         sync: false
-      - key: SMTP_SERVER
+      - key: RESEND_API_KEY
         sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
+      - key: RESEND_FROM_EMAIL
         sync: false
