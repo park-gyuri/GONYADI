@@ -209,6 +209,9 @@ def delete_review(session: Session, review_id: int, user_id: int) -> bool:
     likes = session.exec(select(UserReviewLike).where(UserReviewLike.review_id == review_id)).all()
     for like in likes:
         session.delete(like)
+    
+    # DB에 삭제 쿼리를 먼저 반영하여 Foreign Key 위반 에러 방지
+    session.flush()
         
     session.delete(review)
     session.commit()

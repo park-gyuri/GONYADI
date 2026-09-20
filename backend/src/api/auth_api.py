@@ -69,13 +69,13 @@ def send_verification(email: str, session: Session = Depends(get_session)):
     success = send_verification_email(email, code)
     
     if not success:
-        # 실제 운영 환경(SMTP 설정 있음)에서 발송 실패한 경우
-        from src.services.email_service import SMTP_USER
-        if SMTP_USER:
+        # 실제 운영 환경(RESEND_API_KEY 설정 있음)에서 발송 실패한 경우
+        from src.services.email_service import RESEND_API_KEY
+        if RESEND_API_KEY:
              raise HTTPException(status_code=400, detail="존재하지 않는 이메일이거나 발송에 실패했습니다.")
         else:
-            # 개발 환경(SMTP 설정 없음)에서는 터미널에 띄워주고 진행 허용
-            print(f"DEBUG: [인증 코드: {code}] (SMTP 설정이 없어 터미널에 출력합니다)")
+            # 개발 환경(RESEND_API_KEY 설정 없음)에서는 터미널에 띄워주고 진행 허용
+            print(f"DEBUG: [인증 코드: {code}] (RESEND_API_KEY 설정이 없어 터미널에 출력합니다)")
 
     # 4. 발송이 성공했거나 개발 환경인 경우에만 DB에 저장
     try:

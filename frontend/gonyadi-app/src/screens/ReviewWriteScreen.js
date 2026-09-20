@@ -179,7 +179,6 @@ const ReviewWriteScreen = () => {
       console.error('[ReviewWrite] 저장 실패:', e.message);
       setSaveModalVisible(false);
       Alert.alert('알림', `저장 중 오류가 발생했습니다: ${e.message}`);
-      setIsSaving(false);
     }
   };
 
